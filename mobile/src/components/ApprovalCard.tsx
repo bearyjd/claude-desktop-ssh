@@ -1,3 +1,4 @@
+import * as Haptics from 'expo-haptics';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Dimensions, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, {
@@ -17,17 +18,67 @@ interface ApprovalCardProps {
   onDecide: (tool_use_id: string, allow: boolean) => void;
 }
 
-function formatInput(input: Record<string, unknown>): { label: string; value: string }[] {
+interface RenderedField {
+  label: string;
+  value: string;
+  isPrimary?: boolean;
+  isCode?: boolean;
+}
+
+const FILE_TOOLS = new Set(['Read', 'Write', 'Edit', 'MultiEdit', 'NotebookRead', 'NotebookEdit']);
+
+function renderFields(toolName: string, input: Record<string, unknown>): RenderedField[] {
+  if (toolName === 'Bash') {
+    const cmd = typeof input.command === 'string' ? input.command : JSON.stringify(input.command);
+    const fields: RenderedField[] = [{ label: 'command', value: cmd, isPrimary: true, isCode: true }];
+    if (input.description) fields.push({ label: 'description', value: String(input.description) });
+    if (input.timeout != null) fields.push({ label: 'timeout', value: String(input.timeout) + 'ms' });
+    return fields;
+  }
+
+  if (FILE_TOOLS.has(toolName)) {
+    const fp = typeof input.file_path === 'string' ? input.file_path : '';
+    const fields: RenderedField[] = [{ label: 'file', value: fp, isPrimary: true, isCode: true }];
+    const body = input.content ?? input.new_string;
+    if (body != null) {
+      fields.push({
+        label: 'content',
+        value: typeof body === 'string' ? body : JSON.stringify(body, null, 2),
+        isCode: true,
+      });
+    }
+    if (input.old_string != null) {
+      fields.push({ label: 'old', value: String(input.old_string), isCode: true });
+    }
+    return fields;
+  }
+
+  if (toolName === 'Glob') {
+    const fields: RenderedField[] = [];
+    if (input.pattern) fields.push({ label: 'pattern', value: String(input.pattern), isPrimary: true, isCode: true });
+    if (input.path) fields.push({ label: 'path', value: String(input.path), isCode: true });
+    return fields;
+  }
+
+  if (toolName === 'Grep') {
+    const fields: RenderedField[] = [];
+    if (input.pattern) fields.push({ label: 'pattern', value: String(input.pattern), isPrimary: true, isCode: true });
+    if (input.path) fields.push({ label: 'path', value: String(input.path), isCode: true });
+    if (input.glob) fields.push({ label: 'glob', value: String(input.glob), isCode: true });
+    return fields;
+  }
+
   return Object.entries(input).map(([key, val]) => ({
     label: key,
     value: typeof val === 'string' ? val : JSON.stringify(val, null, 2),
+    isCode: true,
   }));
 }
 
 export function ApprovalCard({ approval, onDecide }: ApprovalCardProps) {
   const translateX = useSharedValue(0);
   const [expanded, setExpanded] = useState(false);
-  const fields = formatInput(approval.tool_input);
+  const fields = renderFields(approval.tool_name, approval.tool_input);
 
   const [secsRemaining, setSecsRemaining] = useState<number | null>(
     approval.expires_at != null
@@ -46,6 +97,11 @@ export function ApprovalCard({ approval, onDecide }: ApprovalCardProps) {
   }, [approval.expires_at]);
 
   const dismiss = useCallback((allow: boolean) => {
+    if (allow) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } else {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    }
     onDecide(approval.tool_use_id, allow);
   }, [approval.tool_use_id, onDecide]);
 
@@ -79,6 +135,9 @@ export function ApprovalCard({ approval, onDecide }: ApprovalCardProps) {
     opacity: Math.max(0, -translateX.value / SWIPE_THRESHOLD),
   }));
 
+  const primaryField = fields.find(f => f.isPrimary);
+  const secondaryFields = fields.filter(f => !f.isPrimary);
+
   return (
     <View style={styles.wrapper}>
       <Animated.View style={[styles.hint, styles.hintAllow, allowOpacity]}>
@@ -104,22 +163,33 @@ export function ApprovalCard({ approval, onDecide }: ApprovalCardProps) {
             </View>
           </View>
 
-          <Pressable onPress={() => setExpanded(x => !x)} style={styles.inputArea}>
-            <ScrollView
-              style={[styles.inputScroll, expanded ? styles.inputScrollExpanded : styles.inputScrollCollapsed]}
-              scrollEnabled={expanded}
-              showsVerticalScrollIndicator={expanded}
-              nestedScrollEnabled
-            >
-              {fields.map(({ label, value }, idx) => (
-                <View key={`${label}-${idx}`} style={styles.field}>
-                  <Text style={styles.fieldLabel}>{label}</Text>
-                  <Text selectable style={styles.fieldValue}>{value}</Text>
-                </View>
-              ))}
-            </ScrollView>
-            <Text style={styles.expandHint}>{expanded ? '▲ collapse' : '▼ tap to expand'}</Text>
-          </Pressable>
+          {primaryField && (
+            <View style={styles.primaryField}>
+              <Text style={styles.primaryLabel}>{primaryField.label}</Text>
+              <Text selectable style={styles.primaryValue} numberOfLines={expanded ? undefined : 4}>
+                {primaryField.value}
+              </Text>
+            </View>
+          )}
+
+          {secondaryFields.length > 0 && (
+            <Pressable onPress={() => setExpanded(x => !x)} style={styles.inputArea}>
+              <ScrollView
+                style={[styles.inputScroll, expanded ? styles.inputScrollExpanded : styles.inputScrollCollapsed]}
+                scrollEnabled={expanded}
+                showsVerticalScrollIndicator={expanded}
+                nestedScrollEnabled
+              >
+                {secondaryFields.map(({ label, value, isCode }, idx) => (
+                  <View key={`${label}-${idx}`} style={styles.field}>
+                    <Text style={styles.fieldLabel}>{label}</Text>
+                    <Text selectable style={[styles.fieldValue, isCode && styles.fieldValueCode]}>{value}</Text>
+                  </View>
+                ))}
+              </ScrollView>
+              <Text style={styles.expandHint}>{expanded ? '▲ collapse' : '▼ more'}</Text>
+            </Pressable>
+          )}
 
           <View style={styles.actions}>
             <Pressable style={[styles.btn, styles.denyBtn]} onPress={() => dismiss(false)}>
@@ -137,6 +207,8 @@ export function ApprovalCard({ approval, onDecide }: ApprovalCardProps) {
   );
 }
 
+const MONO = Platform.OS === 'android' ? 'monospace' : 'Menlo';
+
 const styles = StyleSheet.create({
   wrapper: {
     marginHorizontal: 16,
@@ -153,20 +225,9 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     zIndex: 0,
   },
-  hintAllow: {
-    right: 0,
-    backgroundColor: '#14532d',
-  },
-  hintDeny: {
-    left: 0,
-    backgroundColor: '#450a0a',
-  },
-  hintText: {
-    fontWeight: '800',
-    fontSize: 13,
-    letterSpacing: 1,
-    color: '#fff',
-  },
+  hintAllow: { right: 0, backgroundColor: '#14532d' },
+  hintDeny: { left: 0, backgroundColor: '#450a0a' },
+  hintText: { fontWeight: '800', fontSize: 13, letterSpacing: 1, color: '#fff' },
   card: {
     backgroundColor: '#141414',
     borderRadius: 14,
@@ -187,101 +248,63 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
   },
-  toolName: {
-    color: '#93c5fd',
-    fontWeight: '700',
-    fontSize: 13,
-    letterSpacing: 0.3,
-  },
-  headerRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  countdown: {
-    color: '#555',
-    fontSize: 12,
-    fontVariant: ['tabular-nums'],
-  },
-  countdownWarn: {
-    color: '#f97316',
-  },
-  seqLabel: {
-    color: '#555',
-    fontSize: 12,
-  },
-  inputArea: {
-    marginBottom: 14,
-  },
-  inputScroll: {
+  toolName: { color: '#93c5fd', fontWeight: '700', fontSize: 13, letterSpacing: 0.3 },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  countdown: { color: '#555', fontSize: 12, fontVariant: ['tabular-nums'] },
+  countdownWarn: { color: '#f97316' },
+  seqLabel: { color: '#555', fontSize: 12 },
+
+  primaryField: {
     backgroundColor: '#0d0d0d',
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#222',
-    padding: 10,
-  },
-  inputScrollCollapsed: {
-    maxHeight: 140,
-  },
-  inputScrollExpanded: {
-    maxHeight: 320,
-  },
-  field: {
+    padding: 12,
     marginBottom: 10,
   },
+  primaryLabel: {
+    color: '#444',
+    fontSize: 10,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 5,
+  },
+  primaryValue: {
+    color: '#e2e8f0',
+    fontFamily: MONO,
+    fontSize: 13,
+    lineHeight: 20,
+  },
+
+  inputArea: { marginBottom: 14 },
+  inputScroll: {
+    backgroundColor: '#0d0d0d',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#1a1a1a',
+    padding: 10,
+  },
+  inputScrollCollapsed: { maxHeight: 100 },
+  inputScrollExpanded: { maxHeight: 280 },
+  field: { marginBottom: 10 },
   fieldLabel: {
-    color: '#555',
+    color: '#444',
     fontSize: 10,
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     marginBottom: 3,
   },
-  fieldValue: {
-    color: '#d0d0d0',
-    fontFamily: Platform.OS === 'android' ? 'monospace' : 'Menlo',
-    fontSize: 12,
-    lineHeight: 18,
-  },
-  expandHint: {
-    color: '#333',
-    fontSize: 10,
-    textAlign: 'right',
-    marginTop: 4,
-    marginRight: 4,
-  },
-  actions: {
-    flexDirection: 'row',
-    gap: 10,
-    marginBottom: 10,
-  },
-  btn: {
-    flex: 1,
-    paddingVertical: 13,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  allowBtn: {
-    backgroundColor: '#14532d',
-  },
-  denyBtn: {
-    backgroundColor: '#1a1a1a',
-    borderWidth: 1,
-    borderColor: '#3f3f3f',
-  },
-  allowText: {
-    color: '#4ade80',
-    fontWeight: '700',
-    fontSize: 15,
-  },
-  denyText: {
-    color: '#888',
-    fontWeight: '600',
-    fontSize: 15,
-  },
-  swipeHint: {
-    textAlign: 'center',
-    color: '#2e2e2e',
-    fontSize: 11,
-  },
+  fieldValue: { color: '#888', fontSize: 12, lineHeight: 18 },
+  fieldValueCode: { fontFamily: MONO, color: '#888' },
+  expandHint: { color: '#2a2a2a', fontSize: 10, textAlign: 'right', marginTop: 4 },
+
+  actions: { flexDirection: 'row', gap: 10, marginBottom: 10 },
+  btn: { flex: 1, paddingVertical: 13, borderRadius: 8, alignItems: 'center' },
+  allowBtn: { backgroundColor: '#14532d' },
+  denyBtn: { backgroundColor: '#1a1a1a', borderWidth: 1, borderColor: '#3f3f3f' },
+  allowText: { color: '#4ade80', fontWeight: '700', fontSize: 15 },
+  denyText: { color: '#888', fontWeight: '600', fontSize: 15 },
+  swipeHint: { textAlign: 'center', color: '#2e2e2e', fontSize: 11 },
 });

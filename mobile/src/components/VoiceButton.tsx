@@ -1,3 +1,4 @@
+import * as Haptics from 'expo-haptics';
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Pressable, StyleSheet, Text } from 'react-native';
 import Voice, { SpeechErrorEvent, SpeechResultsEvent } from '@react-native-voice/voice';
@@ -56,6 +57,7 @@ export function VoiceButton({ onTranscript, disabled }: VoiceButtonProps) {
       await Voice.start('en-US');
       setIsListening(true);
       startPulse();
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     } catch {
       // permission denied or unavailable — fail silently
     }
@@ -67,6 +69,7 @@ export function VoiceButton({ onTranscript, disabled }: VoiceButtonProps) {
     } catch {}
     setIsListening(false);
     stopPulse();
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
   };
 
   const handlePress = () => {
