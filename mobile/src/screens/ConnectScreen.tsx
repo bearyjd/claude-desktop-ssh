@@ -3,6 +3,8 @@ import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
+  Linking,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -25,6 +27,9 @@ interface SavedConfig extends ServerConfig {
 
 const CONFIGS_KEY = 'clauded_saved_configs';
 const LEGACY_KEY = 'clauded_config';
+const TS_API_KEY_STORAGE = 'tailscale_api_key';
+
+interface TsPeer { name: string; ip: string; }
 
 function genId() {
   return Math.random().toString(36).slice(2, 10);
@@ -38,6 +43,15 @@ export function ConnectScreen({ status, onConnect }: ConnectScreenProps) {
   const [port, setPort] = useState('7878');
   const [token, setToken] = useState('');
   const [container, setContainer] = useState('');
+  const [tsApiKey, setTsApiKey] = useState('');
+  const [tsPeers, setTsPeers] = useState<TsPeer[]>([]);
+  const [tsPeerVisible, setTsPeerVisible] = useState(false);
+  const [tsLoading, setTsLoading] = useState(false);
+  const [tsError, setTsError] = useState('');
+
+  useEffect(() => {
+    AsyncStorage.getItem(TS_API_KEY_STORAGE).then((k: string | null) => { if (k) setTsApiKey(k); });
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -106,6 +120,38 @@ export function ConnectScreen({ status, onConnect }: ConnectScreenProps) {
     setSelectedId(cfg.id);
     setName(cfg.name);
     await AsyncStorage.setItem(CONFIGS_KEY, JSON.stringify(updated));
+  };
+
+  const openTailscale = async () => {
+    try {
+      await Linking.openURL('intent:#Intent;package=com.tailscale.ipn;end');
+    } catch {
+      Linking.openURL('https://play.google.com/store/apps/details?id=com.tailscale.ipn');
+    }
+  };
+
+  const browsePeers = async () => {
+    setTsLoading(true);
+    setTsError('');
+    try {
+      const resp = await fetch('https://api.tailscale.com/api/v2/tailnet/-/devices', {
+        headers: { Authorization: `Bearer ${tsApiKey}` },
+      });
+      if (!resp.ok) throw new Error(`${resp.status}`);
+      const data = await resp.json();
+      const peers: TsPeer[] = (data.devices ?? [])
+        .map((d: { name?: string; hostname?: string; addresses?: string[] }) => ({
+          name: (d.name ?? d.hostname ?? 'device').split('.')[0],
+          ip: (d.addresses ?? []).find((a: string) => a.startsWith('100.')) ?? '',
+        }))
+        .filter((p: TsPeer) => p.ip);
+      setTsPeers(peers);
+      setTsPeerVisible(true);
+    } catch (e: unknown) {
+      setTsError(e instanceof Error ? e.message : 'Failed');
+    } finally {
+      setTsLoading(false);
+    }
   };
 
   const handleConnect = () => {
@@ -190,6 +236,20 @@ export function ConnectScreen({ status, onConnect }: ConnectScreenProps) {
             autoCorrect={false}
           />
 
+          <View style={styles.tsRow}>
+            <Pressable onPress={openTailscale} style={styles.tsBtn}>
+              <Text style={styles.tsBtnText}>Open Tailscale ↗</Text>
+            </Pressable>
+            {tsApiKey.length > 0 && (
+              <Pressable onPress={browsePeers} style={styles.tsBrowseBtn} disabled={tsLoading}>
+                {tsLoading
+                  ? <ActivityIndicator size="small" color="#5b8dd9" />
+                  : <Text style={styles.tsBrowseBtnText}>Browse peers</Text>}
+              </Pressable>
+            )}
+          </View>
+          {tsError.length > 0 && <Text style={styles.tsError}>Tailscale error: {tsError}</Text>}
+
           <Text style={styles.label}>Port</Text>
           <TextInput
             style={styles.input}
@@ -245,6 +305,27 @@ export function ConnectScreen({ status, onConnect }: ConnectScreenProps) {
           </View>
         </View>
       </ScrollView>
+
+      <Modal visible={tsPeerVisible} transparent animationType="fade" onRequestClose={() => setTsPeerVisible(false)}>
+        <Pressable style={styles.tsOverlay} onPress={() => setTsPeerVisible(false)}>
+          <View style={styles.tsPeerModal}>
+            <Text style={styles.tsPeerTitle}>Tailscale Peers</Text>
+            {tsPeers.length === 0
+              ? <Text style={styles.tsPeerEmpty}>No devices found</Text>
+              : tsPeers.map(p => (
+                <Pressable
+                  key={p.ip}
+                  style={styles.tsPeerRow}
+                  onPress={() => { setHost(p.ip); setName(n => n || p.name); setTsPeerVisible(false); }}
+                >
+                  <Text style={styles.tsPeerName}>{p.name}</Text>
+                  <Text style={styles.tsPeerIp}>{p.ip}</Text>
+                </Pressable>
+              ))
+            }
+          </View>
+        </Pressable>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -304,4 +385,41 @@ const styles = StyleSheet.create({
   },
   connectBtnDisabled: { opacity: 0.4 },
   connectBtnText: { color: '#0a0a0a', fontWeight: '700', fontSize: 16 },
+
+  tsRow: { flexDirection: 'row', gap: 8, marginTop: 8 },
+  tsBtn: {
+    flex: 1, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 7,
+    borderWidth: 1, borderColor: '#2a2a2a', backgroundColor: '#0d0d0d',
+    alignItems: 'center',
+  },
+  tsBtnText: { color: '#5b8dd9', fontSize: 13, fontWeight: '600' },
+  tsBrowseBtn: {
+    paddingVertical: 8, paddingHorizontal: 14, borderRadius: 7,
+    borderWidth: 1, borderColor: '#1e3a5f', backgroundColor: '#0d1520',
+    alignItems: 'center', justifyContent: 'center', minWidth: 100,
+  },
+  tsBrowseBtnText: { color: '#93c5fd', fontSize: 13, fontWeight: '600' },
+  tsError: { color: '#f87171', fontSize: 12, marginTop: 4 },
+
+  tsOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'center', alignItems: 'center', padding: 24,
+  },
+  tsPeerModal: {
+    backgroundColor: '#141414', borderRadius: 14, width: '100%',
+    borderWidth: 1, borderColor: '#2a2a2a', overflow: 'hidden',
+  },
+  tsPeerTitle: {
+    color: '#888', fontSize: 11, fontWeight: '700', textTransform: 'uppercase',
+    letterSpacing: 0.8, paddingHorizontal: 16, paddingVertical: 12,
+    borderBottomWidth: 1, borderBottomColor: '#1a1a1a',
+  },
+  tsPeerRow: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingHorizontal: 16, paddingVertical: 14,
+    borderBottomWidth: 1, borderBottomColor: '#1a1a1a',
+  },
+  tsPeerName: { color: '#f0f0f0', fontSize: 15, fontWeight: '500' },
+  tsPeerIp: { color: '#5b8dd9', fontSize: 13, fontFamily: 'Menlo' },
+  tsPeerEmpty: { color: '#555', fontSize: 14, padding: 16, textAlign: 'center' },
 });

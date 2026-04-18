@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -126,10 +126,10 @@ export function MainScreen({
     }
   };
 
-  const handleVoiceTranscript = (text: string, isFinal: boolean) => {
+  const handleVoiceTranscript = useCallback((text: string, isFinal: boolean) => {
     setPrompt(text);
     setIsVoiceInterim(!isFinal);
-  };
+  }, []);
 
   const handleRun = () => {
     const p = prompt.trim();

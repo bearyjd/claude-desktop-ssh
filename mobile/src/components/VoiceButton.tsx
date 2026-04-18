@@ -1,7 +1,12 @@
 import * as Haptics from 'expo-haptics';
+import {
+  ExpoSpeechRecognitionModule,
+  useSpeechRecognitionEvent,
+  type ExpoSpeechRecognitionResultEvent,
+  type ExpoSpeechRecognitionErrorEvent,
+} from 'expo-speech-recognition';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, Pressable, StyleSheet, Text } from 'react-native';
-import Voice, { SpeechErrorEvent, SpeechResultsEvent } from '@react-native-voice/voice';
+import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 
 interface VoiceButtonProps {
   onTranscript: (text: string, isFinal: boolean) => void;
@@ -10,8 +15,10 @@ interface VoiceButtonProps {
 
 export function VoiceButton({ onTranscript, disabled }: VoiceButtonProps) {
   const [isListening, setIsListening] = useState(false);
+  const [errMsg, setErrMsg] = useState('');
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const pulseLoop = useRef<Animated.CompositeAnimation | null>(null);
+  const started = useRef(false);
 
   const startPulse = () => {
     pulseAnim.setValue(1);
@@ -30,88 +37,105 @@ export function VoiceButton({ onTranscript, disabled }: VoiceButtonProps) {
   };
 
   const stopListening = useCallback(async () => {
-    try {
-      await Voice.stop();
-    } catch {}
+    if (!started.current) return;
+    started.current = false;
+    try { ExpoSpeechRecognitionModule.stop(); } catch {}
     setIsListening(false);
     stopPulse();
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-  // pulseLoop and pulseAnim are refs (stable); setIsListening is a stable setter
+  // stable refs and setters only
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => {
-    Voice.onSpeechPartialResults = (e: SpeechResultsEvent) => {
-      const partial = e.value?.[0];
-      if (partial) onTranscript(partial, false);
-    };
-    Voice.onSpeechResults = (e: SpeechResultsEvent) => {
-      const final = e.value?.[0];
-      if (final) onTranscript(final, true);
-      stopListening();
-    };
-    Voice.onSpeechError = (_e: SpeechErrorEvent) => {
-      stopListening();
-    };
-    Voice.onSpeechEnd = () => {
-      stopListening();
-    };
+  useSpeechRecognitionEvent('result', (event: ExpoSpeechRecognitionResultEvent) => {
+    const transcript = event.results[0]?.transcript;
+    if (transcript) onTranscript(transcript, event.isFinal);
+    if (event.isFinal) stopListening();
+  });
 
+  useSpeechRecognitionEvent('error', (event: ExpoSpeechRecognitionErrorEvent) => {
+    setErrMsg(event.error);
+    setTimeout(() => setErrMsg(''), 3000);
+    stopListening();
+  });
+
+  useSpeechRecognitionEvent('end', () => {
+    stopListening();
+  });
+
+  useEffect(() => {
     return () => {
-      Voice.destroy().then(() => Voice.removeAllListeners());
+      if (started.current) ExpoSpeechRecognitionModule.stop();
     };
-  }, [onTranscript, stopListening]);
+  }, []);
 
   const startListening = async () => {
+    setErrMsg('');
+    const { granted } = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+    if (!granted) {
+      setErrMsg('mic denied');
+      setTimeout(() => setErrMsg(''), 3000);
+      return;
+    }
     try {
-      await Voice.start('en-US');
+      ExpoSpeechRecognitionModule.start({
+        lang: 'en-US',
+        interimResults: true,
+        maxAlternatives: 1,
+      });
+      started.current = true;
       setIsListening(true);
       startPulse();
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    } catch {
-      // permission denied or unavailable — fail silently
-    }
-  };
-
-  const handlePress = () => {
-    if (isListening) {
-      stopListening();
-    } else {
-      startListening();
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setErrMsg(msg.slice(0, 30));
+      setTimeout(() => setErrMsg(''), 3000);
     }
   };
 
   return (
-    <Pressable
-      onPress={handlePress}
-      disabled={disabled}
-      style={({ pressed }: { pressed: boolean }) => [styles.btn, pressed && styles.btnPressed, disabled && styles.btnDisabled]}
-      hitSlop={8}
-    >
-      <Animated.View style={[
-        styles.ripple,
-        isListening && styles.rippleActive,
-        { transform: [{ scale: pulseAnim }] },
-      ]} />
-      <Text style={[styles.icon, isListening && styles.iconActive]}>
-        {isListening ? '⏹' : '🎤'}
-      </Text>
-    </Pressable>
+    <View>
+      <Pressable
+        onPressIn={startListening}
+        onPressOut={stopListening}
+        disabled={disabled}
+        style={({ pressed }: { pressed: boolean }) => [
+          styles.btn,
+          pressed && styles.btnPressed,
+          isListening && styles.btnActive,
+          disabled && styles.btnDisabled,
+        ]}
+        hitSlop={8}
+      >
+        <Animated.View style={[
+          styles.ripple,
+          isListening && styles.rippleActive,
+          { transform: [{ scale: pulseAnim }] },
+        ]} />
+        <Text style={[styles.icon, isListening && styles.iconActive]}>
+          {isListening ? '⏹' : '🎤'}
+        </Text>
+      </Pressable>
+      {errMsg.length > 0 && <Text style={styles.err}>{errMsg}</Text>}
+    </View>
   );
 }
 
+// Claude coral: #DA7756  Claude tan: #C4A882
 const styles = StyleSheet.create({
   btn: {
     width: 64,
     height: 64,
     borderRadius: 32,
-    borderWidth: 1,
-    borderColor: '#2a2a2a',
+    borderWidth: 1.5,
+    borderColor: '#C4A882',
     backgroundColor: '#0d0d0d',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  btnPressed: { backgroundColor: '#1a1a1a' },
+  btnPressed: { backgroundColor: '#1a1008' },
+  btnActive: { borderColor: '#DA7756' },
   btnDisabled: { opacity: 0.35 },
   ripple: {
     position: 'absolute',
@@ -120,9 +144,8 @@ const styles = StyleSheet.create({
     borderRadius: 32,
     backgroundColor: 'transparent',
   },
-  rippleActive: {
-    backgroundColor: 'rgba(239, 68, 68, 0.12)',
-  },
+  rippleActive: { backgroundColor: 'rgba(218, 119, 86, 0.15)' },
   icon: { fontSize: 26 },
   iconActive: {},
+  err: { color: '#DA7756', fontSize: 10, textAlign: 'center', marginTop: 2 },
 });

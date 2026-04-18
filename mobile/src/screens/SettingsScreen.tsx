@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Clipboard from 'expo-clipboard';
 import React, { useEffect, useState } from 'react';
 import {
@@ -6,8 +7,11 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
+
+const TS_API_KEY_STORAGE = 'tailscale_api_key';
 
 interface NotifyConfig {
   topic: string;
@@ -23,12 +27,21 @@ interface SettingsScreenProps {
 
 export function SettingsScreen({ visible, onClose, notifyConfig, onRequestNotifyConfig }: SettingsScreenProps) {
   const [copied, setCopied] = useState(false);
+  const [tsApiKey, setTsApiKey] = useState('');
+  const [tsKeySaved, setTsKeySaved] = useState(false);
 
   useEffect(() => {
     if (visible) {
       onRequestNotifyConfig();
+      AsyncStorage.getItem(TS_API_KEY_STORAGE).then((k: string | null) => { if (k) setTsApiKey(k); });
     }
   }, [visible, onRequestNotifyConfig]);
+
+  const saveTsKey = async () => {
+    await AsyncStorage.setItem(TS_API_KEY_STORAGE, tsApiKey.trim());
+    setTsKeySaved(true);
+    setTimeout(() => setTsKeySaved(false), 2000);
+  };
 
   const handleCopy = async () => {
     if (!notifyConfig?.topic) return;
@@ -95,6 +108,32 @@ export function SettingsScreen({ visible, onClose, notifyConfig, onRequestNotify
           >
             <Text style={styles.subscribeBtnText}>Open in ntfy app →</Text>
           </Pressable>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>Tailscale</Text>
+          <Text style={styles.sectionSubtitle}>
+            Optional. Add an API key to browse your Tailscale peers from the connect screen.
+            Generate one at tailscale.com → Settings → Keys.
+          </Text>
+          <View style={styles.tsKeyRow}>
+            <TextInput
+              style={[styles.tsKeyInput]}
+              value={tsApiKey}
+              onChangeText={setTsApiKey}
+              placeholder="tskey-api-..."
+              placeholderTextColor="#444"
+              autoCapitalize="none"
+              autoCorrect={false}
+              secureTextEntry
+            />
+            <Pressable
+              style={[styles.tsKeySaveBtn, tsKeySaved && styles.tsKeySaveBtnDone]}
+              onPress={saveTsKey}
+            >
+              <Text style={styles.tsKeySaveBtnText}>{tsKeySaved ? 'Saved' : 'Save'}</Text>
+            </Pressable>
+          </View>
         </View>
       </View>
     </Modal>
@@ -223,4 +262,16 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
   },
+  tsKeyRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
+  tsKeyInput: {
+    flex: 1, backgroundColor: '#0d0d0d', borderRadius: 8, borderWidth: 1,
+    borderColor: '#2a2a2a', padding: 12, color: '#f0f0f0', fontSize: 13,
+    fontFamily: 'Menlo',
+  },
+  tsKeySaveBtn: {
+    paddingHorizontal: 14, paddingVertical: 12, borderRadius: 8,
+    borderWidth: 1, borderColor: '#2a2a2a', backgroundColor: '#111',
+  },
+  tsKeySaveBtnDone: { borderColor: '#166534', backgroundColor: '#052e16' },
+  tsKeySaveBtnText: { color: '#888', fontSize: 13, fontWeight: '600' },
 });
