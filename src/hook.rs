@@ -7,7 +7,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::oneshot;
 
-use crate::{Decision, PendingApprovals};
+use crate::{BufferedDecisions, Decision, PendingApprovals};
 
 /// What the clauded-hook binary sends over the socket.
 #[derive(Deserialize)]
@@ -26,7 +26,7 @@ struct HookResponse {
 
 /// Bind the Unix socket and accept hook connections forever.
 /// Each connection is handled in its own spawned task.
-pub async fn serve(pending: PendingApprovals) -> Result<()> {
+pub async fn serve(pending: PendingApprovals, buffered: BufferedDecisions) -> Result<()> {
     let socket_dir = socket_dir()?;
     std::fs::create_dir_all(&socket_dir)
         .with_context(|| format!("failed to create socket dir {}", socket_dir.display()))?;
@@ -46,8 +46,9 @@ pub async fn serve(pending: PendingApprovals) -> Result<()> {
         match listener.accept().await {
             Ok((stream, _)) => {
                 let pending = pending.clone();
+                let buffered = buffered.clone();
                 tokio::spawn(async move {
-                    if let Err(e) = handle_connection(stream, pending).await {
+                    if let Err(e) = handle_connection(stream, pending, buffered).await {
                         tracing::error!("hook connection error: {e:#}");
                     }
                 });
@@ -59,7 +60,11 @@ pub async fn serve(pending: PendingApprovals) -> Result<()> {
     }
 }
 
-async fn handle_connection(mut stream: UnixStream, pending: PendingApprovals) -> Result<()> {
+async fn handle_connection(
+    mut stream: UnixStream,
+    pending: PendingApprovals,
+    buffered: BufferedDecisions,
+) -> Result<()> {
     // Read request JSON until hook binary shuts down its write half
     let mut buf = String::new();
     stream
@@ -76,16 +81,22 @@ async fn handle_connection(mut stream: UnixStream, pending: PendingApprovals) ->
         "approval pending"
     );
 
-    // Register a oneshot channel keyed by tool_use_id.
-    // Concurrent tool calls each get their own independent slot.
-    let (tx, rx) = oneshot::channel::<Decision>();
-    pending.lock().await.insert(req.tool_use_id.clone(), tx);
+    // If the WS client already sent a decision before the hook registered, use it.
+    let decision = if let Some(d) = buffered.lock().await.remove(&req.tool_use_id) {
+        tracing::info!(tool_use_id = %req.tool_use_id, "using buffered decision");
+        d
+    } else {
+        // Register a oneshot channel keyed by tool_use_id.
+        // Concurrent tool calls each get their own independent slot.
+        let (tx, rx) = oneshot::channel::<Decision>();
+        pending.lock().await.insert(req.tool_use_id.clone(), tx);
 
-    // Block until a client (stdin or future WebSocket) sends a decision.
-    // If the sender is dropped (daemon shutdown), deny.
-    let decision = rx.await.unwrap_or(Decision::Deny);
-
-    pending.lock().await.remove(&req.tool_use_id);
+        // Block until a client (stdin or WebSocket) sends a decision.
+        // If the sender is dropped (daemon shutdown), deny.
+        let d = rx.await.unwrap_or(Decision::Deny);
+        pending.lock().await.remove(&req.tool_use_id);
+        d
+    };
 
     tracing::info!(
         tool_use_id = %req.tool_use_id,

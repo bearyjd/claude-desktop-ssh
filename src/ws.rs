@@ -8,7 +8,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::broadcast;
 use tokio_tungstenite::{accept_async, tungstenite::Message};
 
-use crate::{Decision, PendingApprovals};
+use crate::{BufferedDecisions, Decision, PendingApprovals};
 use crate::db;
 
 /// Broadcast channel payload: (seq, unix_ts, raw_json_string)
@@ -19,6 +19,7 @@ pub async fn serve(
     token: String,
     db: Arc<Mutex<Connection>>,
     pending: PendingApprovals,
+    buffered: BufferedDecisions,
     events_tx: EventTx,
 ) -> Result<()> {
     let addr = format!("0.0.0.0:{port}");
@@ -35,8 +36,9 @@ pub async fn serve(
                 let db = db.clone();
                 let pending = pending.clone();
                 let events_rx = events_tx.subscribe();
+                let buffered = buffered.clone();
                 tokio::spawn(async move {
-                    if let Err(e) = handle_ws(stream, token, db, pending, events_rx).await {
+                    if let Err(e) = handle_ws(stream, token, db, pending, buffered, events_rx).await {
                         tracing::error!("WS connection error: {e:#}");
                     }
                 });
@@ -51,6 +53,7 @@ async fn handle_ws(
     token: String,
     db: Arc<Mutex<Connection>>,
     pending: PendingApprovals,
+    buffered: BufferedDecisions,
     mut events_rx: broadcast::Receiver<(i64, f64, String)>,
 ) -> Result<()> {
     let ws = accept_async(stream).await.context("WS upgrade failed")?;
@@ -106,7 +109,7 @@ async fn handle_ws(
             // If neither matches (e.g. it was an input), we can't put it back —
             // just process it below as a client message.
             else {
-                handle_input(&msg, &client_id, &pending).await;
+                handle_input(&msg, &client_id, &pending, &buffered).await;
             }
         }
         Some(Ok(Message::Close(_))) | None => return Ok(()),
@@ -161,7 +164,7 @@ async fn handle_ws(
                 match msg {
                     Some(Ok(Message::Text(txt))) => {
                         if let Ok(v) = serde_json::from_str::<Value>(&txt) {
-                            handle_input(&v, &client_id, &pending).await;
+                            handle_input(&v, &client_id, &pending, &buffered).await;
                         }
                     }
                     Some(Ok(Message::Ping(data))) => {
@@ -180,7 +183,12 @@ async fn handle_ws(
     Ok(())
 }
 
-async fn handle_input(msg: &Value, client_id: &str, pending: &PendingApprovals) {
+async fn handle_input(
+    msg: &Value,
+    client_id: &str,
+    pending: &PendingApprovals,
+    buffered: &BufferedDecisions,
+) {
     if msg.get("type").and_then(|v| v.as_str()) != Some("input") {
         return;
     }
@@ -198,7 +206,9 @@ async fn handle_input(msg: &Value, client_id: &str, pending: &PendingApprovals) 
         let _ = tx.send(decision);
         tracing::info!(%client_id, %tool_use_id, %decision_str, "WS approval resolved");
     } else {
-        tracing::warn!(%client_id, %tool_use_id, "no pending approval for WS input");
+        // Hook hasn't registered yet — buffer the decision for when it arrives.
+        buffered.lock().await.insert(tool_use_id.to_string(), decision);
+        tracing::info!(%client_id, %tool_use_id, %decision_str, "decision buffered (hook not yet registered)");
     }
 }
 

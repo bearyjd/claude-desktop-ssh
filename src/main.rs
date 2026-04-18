@@ -12,6 +12,10 @@ use tokio::sync::{broadcast, oneshot, Mutex};
 /// Shared map: tool_use_id → oneshot sender waiting for a user decision.
 pub type PendingApprovals = Arc<Mutex<HashMap<String, oneshot::Sender<Decision>>>>;
 
+/// Decisions that arrived from a WS client before the hook registered its slot.
+/// The hook checks this map first so early approvals aren't lost.
+pub type BufferedDecisions = Arc<Mutex<HashMap<String, Decision>>>;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Decision {
     Allow,
@@ -32,12 +36,13 @@ async fn main() -> Result<()> {
 
     let db = Arc::new(std::sync::Mutex::new(db::open()?));
     let pending: PendingApprovals = Arc::new(Mutex::new(HashMap::new()));
+    let buffered: BufferedDecisions = Arc::new(Mutex::new(HashMap::new()));
 
     // Broadcast channel: (seq, unix_ts, raw_json) — 4096 slot buffer per subscriber
     let (events_tx, _) = broadcast::channel::<(i64, f64, String)>(4096);
 
     // Hook socket — must be running before Claude is spawned
-    tokio::spawn(hook::serve(pending.clone()));
+    tokio::spawn(hook::serve(pending.clone(), buffered.clone()));
 
     // WebSocket server
     tokio::spawn(ws::serve(
@@ -45,6 +50,7 @@ async fn main() -> Result<()> {
         cfg.token.clone(),
         db.clone(),
         pending.clone(),
+        buffered.clone(),
         events_tx.clone(),
     ));
 
