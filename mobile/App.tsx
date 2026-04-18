@@ -12,13 +12,16 @@ import { ServerConfig } from './src/types';
 const LAST_CONFIG_KEY = 'clauded_last_config';
 
 export default function App() {
-  const { status, sessionStatus, events, pendingApprovals, lastSeq, notifyConfig, connect, disconnect, decide, run, kill, getNotifyConfig } = useClaudedWS();
+  const { status, sessionStatus, events, pendingApprovals, lastSeq, viewStartSeq, notifyConfig, connect, disconnect, decide, run, kill, getNotifyConfig, listDir } = useClaudedWS();
   const [config, setConfig] = useState<ServerConfig | null>(null);
   const [isLocked, setIsLocked] = useState(false);
 
   const configRef = useRef<ServerConfig | null>(null);
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
   const isConnectedRef = useRef(false);
+  const lockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const LOCK_DELAY_MS = 5 * 60 * 1000;
 
   useEffect(() => { configRef.current = config; }, [config]);
   useEffect(() => {
@@ -39,22 +42,38 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Lock on background only; reconnect when returning to foreground if not already connected
+  // Lock after 5 min in background; cancel if user returns sooner
   useEffect(() => {
     const sub = AppState.addEventListener('change', (next: AppStateStatus) => {
       const prev = appStateRef.current;
       appStateRef.current = next;
 
       if (prev === 'active' && next === 'background') {
-        if (configRef.current) setIsLocked(true);
+        if (configRef.current) {
+          lockTimerRef.current = setTimeout(() => {
+            setIsLocked(true);
+            lockTimerRef.current = null;
+          }, LOCK_DELAY_MS);
+        }
       }
 
-      if (next === 'active' && prev !== 'active' && configRef.current && !isConnectedRef.current) {
-        connect(configRef.current);
+      if (next === 'active' && prev !== 'active') {
+        if (lockTimerRef.current !== null) {
+          clearTimeout(lockTimerRef.current);
+          lockTimerRef.current = null;
+        }
+        if (configRef.current && !isConnectedRef.current) {
+          connect(configRef.current);
+        }
       }
     });
-    return () => sub.remove();
-  }, [connect]);
+    return () => {
+      sub.remove();
+      if (lockTimerRef.current !== null) {
+        clearTimeout(lockTimerRef.current);
+      }
+    };
+  }, [connect, LOCK_DELAY_MS]);
 
   const handleConnect = async (cfg: ServerConfig) => {
     setConfig(cfg);
@@ -85,6 +104,7 @@ export default function App() {
             events={events}
             pendingApprovals={pendingApprovals}
             lastSeq={lastSeq}
+            viewStartSeq={viewStartSeq}
             defaultContainer={config?.container}
             notifyConfig={notifyConfig}
             onDecide={decide}
@@ -92,6 +112,7 @@ export default function App() {
             onRun={run}
             onKill={kill}
             onRequestNotifyConfig={getNotifyConfig}
+            listDir={listDir}
           />
         ) : (
           <ConnectScreen

@@ -20,6 +20,7 @@ interface ChatViewProps {
   events: EventFrame[];
   pendingApprovals: PendingApproval[];
   onDecide: (tool_use_id: string, allow: boolean) => void;
+  viewStartSeq: number;
 }
 
 function buildResultMap(events: EventFrame[]): Map<string, string> {
@@ -141,18 +142,23 @@ const tcStyles = StyleSheet.create({
   },
 });
 
-export function ChatView({ events, pendingApprovals, onDecide }: ChatViewProps) {
+export function ChatView({ events, pendingApprovals, onDecide, viewStartSeq }: ChatViewProps) {
   const scrollRef = useRef<ScrollView>(null);
-  const resultMap = buildResultMap(events);
+  const [showHistory, setShowHistory] = useState(false);
+
+  useEffect(() => { setShowHistory(false); }, [viewStartSeq]);
+
+  const visibleEvents = showHistory ? events : events.filter(f => f.seq > viewStartSeq);
+  const resultMap = buildResultMap(visibleEvents);
   const pendingMap = new Map(pendingApprovals.map(a => [a.tool_use_id, a]));
 
   useEffect(() => {
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
-  }, [events.length, pendingApprovals.length]);
+  }, [visibleEvents.length, pendingApprovals.length]);
 
   const items: React.ReactNode[] = [];
 
-  for (const frame of events) {
+  for (const frame of visibleEvents) {
     const ev = frame.event;
 
     if (ev.type === 'session_started') {
@@ -220,10 +226,22 @@ export function ChatView({ events, pendingApprovals, onDecide }: ChatViewProps) 
     }
   }
 
-  if (items.length === 0) {
+  const hasHistory = events.some(f => f.seq <= viewStartSeq);
+
+  if (items.length === 0 && !hasHistory) {
     return (
       <View style={styles.empty}>
         <Text style={styles.emptyText}>No conversation yet</Text>
+      </View>
+    );
+  }
+
+  if (items.length === 0 && hasHistory) {
+    return (
+      <View style={styles.empty}>
+        <Pressable onPress={() => setShowHistory(true)} style={styles.historyToggle}>
+          <Text style={styles.historyToggleText}>▼ Show history</Text>
+        </Pressable>
       </View>
     );
   }
@@ -235,6 +253,13 @@ export function ChatView({ events, pendingApprovals, onDecide }: ChatViewProps) 
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
     >
+      {hasHistory && (
+        <Pressable onPress={() => setShowHistory(x => !x)} style={styles.historyToggle}>
+          <Text style={styles.historyToggleText}>
+            {showHistory ? '▲ Hide history' : '▼ Show history'}
+          </Text>
+        </Pressable>
+      )}
       {items}
     </ScrollView>
   );
@@ -276,4 +301,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 22,
   },
+  historyToggle: { alignItems: 'center', paddingVertical: 6 },
+  historyToggleText: { color: '#52525b', fontSize: 11 },
 });

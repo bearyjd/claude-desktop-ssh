@@ -34,6 +34,8 @@ pub struct RunRequest {
     pub container: Option<String>,
     /// Pass `--dangerously-skip-permissions` to claude — bypasses all tool approval hooks.
     pub dangerously_skip_permissions: bool,
+    /// Working directory for the claude process.
+    pub work_dir: Option<String>,
 }
 
 #[tokio::main]
@@ -140,6 +142,7 @@ async fn main() -> Result<()> {
             &req.prompt,
             req.container.as_deref(),
             req.dangerously_skip_permissions,
+            req.work_dir.as_deref(),
             kill_rx,
             db.clone(),
             pending.clone(),

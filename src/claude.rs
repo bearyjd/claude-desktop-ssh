@@ -19,6 +19,7 @@ pub async fn spawn_and_process(
     prompt: &str,
     container: Option<&str>,
     dangerously_skip_permissions: bool,
+    work_dir: Option<&str>,
     kill_rx: oneshot::Receiver<()>,
     db: Arc<Mutex<Connection>>,
     _pending: PendingApprovals,
@@ -69,6 +70,11 @@ pub async fn spawn_and_process(
             cmd
         }
     };
+
+    let mut cmd = cmd;
+    if let Some(dir) = work_dir {
+        cmd.cwd(dir);
+    }
 
     let mut child = pair
         .slave

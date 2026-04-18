@@ -8,10 +8,11 @@ import {
   View,
 } from 'react-native';
 import { ChatView } from '../components/ChatView';
+import { DirPicker } from '../components/DirPicker';
 import { EventFeed } from '../components/EventFeed';
 import { VoiceButton } from '../components/VoiceButton';
 import { SettingsScreen } from './SettingsScreen';
-import { ConnectionStatus, EventFrame, PendingApproval, SessionStatus } from '../types';
+import { ConnectionStatus, DirListingEvent, EventFrame, PendingApproval, SessionStatus } from '../types';
 import type { NotifyConfig } from '../hooks/useClaudedWS';
 
 interface MainScreenProps {
@@ -20,13 +21,15 @@ interface MainScreenProps {
   events: EventFrame[];
   pendingApprovals: PendingApproval[];
   lastSeq: number;
+  viewStartSeq: number;
   defaultContainer?: string;
   notifyConfig: NotifyConfig | null;
   onDecide: (tool_use_id: string, allow: boolean) => void;
   onDisconnect: () => void;
-  onRun: (prompt: string, container?: string, dangerouslySkipPermissions?: boolean) => void;
+  onRun: (prompt: string, container?: string, dangerouslySkipPermissions?: boolean, workDir?: string) => void;
   onKill: () => void;
   onRequestNotifyConfig: () => void;
+  listDir: (path: string, cb: (ev: DirListingEvent) => void) => void;
 }
 
 const STATUS_COLOR: Record<ConnectionStatus, string> = {
@@ -50,6 +53,7 @@ export function MainScreen({
   events,
   pendingApprovals,
   lastSeq,
+  viewStartSeq,
   defaultContainer,
   notifyConfig,
   onDecide,
@@ -57,10 +61,13 @@ export function MainScreen({
   onRun,
   onKill,
   onRequestNotifyConfig,
+  listDir,
 }: MainScreenProps) {
   const [prompt, setPrompt] = useState('');
   const [isVoiceInterim, setIsVoiceInterim] = useState(false);
   const [container, setContainer] = useState(defaultContainer ?? '');
+  const [workDir, setWorkDir] = useState('');
+  const [dirPickerOpen, setDirPickerOpen] = useState(false);
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [dangerouslySkipPermissions, setDangerouslySkipPermissions] = useState(false);
   const [skipPermsConfirming, setSkipPermsConfirming] = useState(false);
@@ -120,7 +127,7 @@ export function MainScreen({
   const handleRun = () => {
     const p = prompt.trim();
     if (!p) return;
-    onRun(p, container.trim() || undefined, dangerouslySkipPermissions);
+    onRun(p, container.trim() || undefined, dangerouslySkipPermissions, workDir.trim() || undefined);
     setPrompt('');
     setIsVoiceInterim(false);
   };
@@ -175,6 +182,7 @@ export function MainScreen({
         events={events}
         pendingApprovals={pendingApprovals}
         onDecide={onDecide}
+        viewStartSeq={viewStartSeq}
       />
 
       {/* New session input (only when idle) */}
@@ -211,6 +219,18 @@ export function MainScreen({
               <Text style={styles.runBtnText}>Run</Text>
             </Pressable>
           </View>
+
+          <Pressable onPress={() => setDirPickerOpen(true)} style={styles.dirBtn}>
+            <Text style={styles.dirBtnText} numberOfLines={1}>
+              {workDir || '📁 Choose project directory'}
+            </Text>
+          </Pressable>
+          <DirPicker
+            visible={dirPickerOpen}
+            onClose={() => setDirPickerOpen(false)}
+            onSelect={setWorkDir}
+            listDir={listDir}
+          />
 
           <Pressable
             style={[
@@ -348,6 +368,14 @@ const styles = StyleSheet.create({
   runBtn: { backgroundColor: '#e2e8f0', borderRadius: 8, paddingHorizontal: 20, paddingVertical: 10 },
   runBtnDisabled: { opacity: 0.35 },
   runBtnText: { color: '#0a0a0a', fontWeight: '700', fontSize: 14 },
+  dirBtn: {
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#2a2a2a',
+    backgroundColor: '#0d0d0d',
+    padding: 10,
+  },
+  dirBtnText: { color: '#9ca3af', fontSize: 13, fontFamily: 'Menlo' },
   skipPermsToggle: {
     flexDirection: 'row',
     alignItems: 'center',

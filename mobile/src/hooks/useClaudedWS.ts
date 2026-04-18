@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { EventFrame, PendingApproval, ConnectionStatus, ServerConfig, SessionStatus, AssistantEvent, ToolUseBlock } from '../types';
+import { EventFrame, PendingApproval, ConnectionStatus, ServerConfig, SessionStatus, AssistantEvent, ToolUseBlock, DirListingEvent } from '../types';
 
 const LAST_SEQ_KEY = 'clauded_last_seq';
 
@@ -17,13 +17,15 @@ interface UseClaudedWSResult {
   events: EventFrame[];
   pendingApprovals: PendingApproval[];
   lastSeq: number;
+  viewStartSeq: number;
   notifyConfig: NotifyConfig | null;
   connect: (config: ServerConfig) => void;
   disconnect: () => void;
   decide: (tool_use_id: string, allow: boolean) => void;
-  run: (prompt: string, container?: string, dangerouslySkipPermissions?: boolean) => void;
+  run: (prompt: string, container?: string, dangerouslySkipPermissions?: boolean, workDir?: string) => void;
   kill: () => void;
   getNotifyConfig: () => void;
+  listDir: (path: string, cb: (ev: DirListingEvent) => void) => void;
 }
 
 export function useClaudedWS(): UseClaudedWSResult {
@@ -32,6 +34,7 @@ export function useClaudedWS(): UseClaudedWSResult {
   const [events, setEvents] = useState<EventFrame[]>([]);
   const [pendingApprovals, setPendingApprovals] = useState<PendingApproval[]>([]);
   const [lastSeq, setLastSeq] = useState(0);
+  const [viewStartSeq, setViewStartSeq] = useState(0);
   const [notifyConfig, setNotifyConfig] = useState<NotifyConfig | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
@@ -39,6 +42,7 @@ export function useClaudedWS(): UseClaudedWSResult {
   const storedSinceRef = useRef(0);
   const resolvedToolIds = useRef<Set<string>>(new Set<string>());
   const sessionRunningRef = useRef(false);
+  const dirListingCallbackRef = useRef<((ev: DirListingEvent) => void) | null>(null);
 
   useEffect(() => {
     AsyncStorage.getItem(LAST_SEQ_KEY).then((val: string | null) => {
@@ -60,15 +64,21 @@ export function useClaudedWS(): UseClaudedWSResult {
     );
   }, []);
 
-  const run = useCallback((prompt: string, container?: string, dangerouslySkipPermissions?: boolean) => {
+  const run = useCallback((prompt: string, container?: string, dangerouslySkipPermissions?: boolean, workDir?: string) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({
         type: 'run',
         prompt,
         container: container || null,
         dangerously_skip_permissions: dangerouslySkipPermissions ?? false,
+        work_dir: workDir || null,
       }));
     }
+  }, []);
+
+  const listDir = useCallback((path: string, cb: (ev: DirListingEvent) => void) => {
+    dirListingCallbackRef.current = cb;
+    wsRef.current?.send(JSON.stringify({ type: 'list_dir', path }));
   }, []);
 
   const kill = useCallback(() => {
@@ -169,6 +179,10 @@ export function useClaudedWS(): UseClaudedWSResult {
         prev.filter((p: PendingApproval) => p.tool_use_id !== tool_use_id)
       );
     }
+
+    if (event.type === 'dir_listing') {
+      dirListingCallbackRef.current?.(event as unknown as DirListingEvent);
+    }
   }, []);
 
   const connect = useCallback((config: ServerConfig) => {
@@ -208,6 +222,7 @@ export function useClaudedWS(): UseClaudedWSResult {
         setPendingApprovals([]);
         lastSeqRef.current = 0;
         setLastSeq(0);
+        setViewStartSeq(serverHeadSeq ?? 0);
         resolvedToolIds.current = new Set<string>();
 
         ws.send(JSON.stringify({ type: 'attach', since: effectiveSince }));
@@ -266,5 +281,5 @@ export function useClaudedWS(): UseClaudedWSResult {
 
   useEffect(() => () => { wsRef.current?.close(); }, []);
 
-  return { status, sessionStatus, events, pendingApprovals, lastSeq, notifyConfig, connect, disconnect, decide, run, kill, getNotifyConfig };
+  return { status, sessionStatus, events, pendingApprovals, lastSeq, viewStartSeq, notifyConfig, connect, disconnect, decide, run, kill, getNotifyConfig, listDir };
 }

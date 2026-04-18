@@ -80,3 +80,15 @@ export interface ServerConfig {
   token: string;
   container?: string;
 }
+
+export interface DirEntry {
+  name: string;
+  is_dir: boolean;
+}
+
+export interface DirListingEvent {
+  type: 'dir_listing';
+  path: string;
+  entries: DirEntry[];
+  error?: string;
+}

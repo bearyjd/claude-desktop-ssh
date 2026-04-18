@@ -188,7 +188,8 @@ async fn handle_ws(
                 match msg {
                     Some(Ok(Message::Text(txt))) => {
                         if let Ok(v) = serde_json::from_str::<Value>(&txt) {
-                            if v.get("type").and_then(|t| t.as_str()) == Some("get_notify_config") {
+                            let msg_type = v.get("type").and_then(|t| t.as_str()).unwrap_or("");
+                            if msg_type == "get_notify_config" {
                                 let reply = serde_json::to_string(&serde_json::json!({
                                     "type": "notify_config",
                                     "topic": cfg.notify.ntfy_topic,
@@ -196,6 +197,66 @@ async fn handle_ws(
                                 })).unwrap_or_default();
                                 if sink.send(Message::Text(reply)).await.is_err() {
                                     break;
+                                }
+                            } else if msg_type == "list_dir" {
+                                let raw_path = v.get("path").and_then(|p| p.as_str()).unwrap_or("~");
+                                let home = std::env::var("HOME").unwrap_or_else(|_| "/".to_string());
+                                let expanded = if raw_path == "~" || raw_path.starts_with("~/") {
+                                    raw_path.replacen('~', &home, 1)
+                                } else {
+                                    raw_path.to_string()
+                                };
+                                let canonical = std::fs::canonicalize(&expanded)
+                                    .unwrap_or_else(|_| std::path::PathBuf::from(&expanded));
+
+                                let response = if !canonical.starts_with(&home) {
+                                    serde_json::json!({
+                                        "type": "dir_listing",
+                                        "path": canonical.to_string_lossy(),
+                                        "entries": [],
+                                        "error": "path is outside home directory"
+                                    })
+                                } else {
+                                    match std::fs::read_dir(&canonical) {
+                                        Ok(rd) => {
+                                            let mut entries: Vec<serde_json::Value> = rd
+                                                .filter_map(|e| e.ok())
+                                                .filter(|e| !e.file_name().to_string_lossy().starts_with('.'))
+                                                .map(|e| {
+                                                    let is_dir = e.file_type().map(|t| t.is_dir()).unwrap_or(false);
+                                                    serde_json::json!({
+                                                        "name": e.file_name().to_string_lossy(),
+                                                        "is_dir": is_dir
+                                                    })
+                                                })
+                                                .collect();
+                                            entries.sort_by(|a, b| {
+                                                let ad = a["is_dir"].as_bool().unwrap_or(false);
+                                                let bd = b["is_dir"].as_bool().unwrap_or(false);
+                                                bd.cmp(&ad).then_with(|| {
+                                                    a["name"].as_str().unwrap_or("").cmp(b["name"].as_str().unwrap_or(""))
+                                                })
+                                            });
+                                            entries.truncate(200);
+                                            serde_json::json!({
+                                                "type": "dir_listing",
+                                                "path": canonical.to_string_lossy(),
+                                                "entries": entries
+                                            })
+                                        }
+                                        Err(e) => serde_json::json!({
+                                            "type": "dir_listing",
+                                            "path": canonical.to_string_lossy(),
+                                            "entries": [],
+                                            "error": e.to_string()
+                                        }),
+                                    }
+                                };
+                                tracing::debug!(%client_id, path = %canonical.display(), "list_dir");
+                                if let Ok(s) = serde_json::to_string(&response) {
+                                    if sink.send(Message::Text(s)).await.is_err() {
+                                        break;
+                                    }
                                 }
                             } else {
                                 handle_input(&v, &client_id, &pending, &buffered, &run_tx, &session_running, &kill_switch).await;
@@ -270,12 +331,18 @@ async fn handle_input(
                 .get("dangerously_skip_permissions")
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false);
+            let work_dir = msg
+                .get("work_dir")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string());
 
-            tracing::info!(%client_id, container = ?container, dangerously_skip_permissions, "received run request");
+            tracing::info!(%client_id, container = ?container, ?work_dir, dangerously_skip_permissions, "received run request");
             let req = RunRequest {
                 prompt: prompt.to_string(),
                 container,
                 dangerously_skip_permissions,
+                work_dir,
             };
             if run_tx.try_send(req).is_err() {
                 tracing::warn!(%client_id, "run_tx full or closed");
