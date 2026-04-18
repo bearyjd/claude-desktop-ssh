@@ -33,7 +33,7 @@ Network transport: [Tailscale](https://tailscale.com). No open ports. No cloud r
 The entire architecture depends on `claude --output-format stream-json` pausing on stdin for tool approval. Verify this first:
 
 ```bash
-stdbuf -oL claude --output-format stream-json \
+stdbuf -oL claude --output-format stream-json --verbose \
   -p "write hello to /tmp/test.txt" | while IFS= read -r line; do
     echo "$(date +%s.%N) $line"
     sleep 0.1
