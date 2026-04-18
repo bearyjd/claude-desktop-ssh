@@ -1,26 +1,28 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { EventFrame, PendingApproval, ConnectionStatus, ServerConfig, AssistantEvent, ToolUseBlock } from '../types';
+import { EventFrame, PendingApproval, ConnectionStatus, ServerConfig, SessionStatus, AssistantEvent, ToolUseBlock } from '../types';
 
 const CLIENT_ID = `mobile-${Math.random().toString(36).slice(2, 8)}`;
 
 interface UseClaudedWSResult {
   status: ConnectionStatus;
+  sessionStatus: SessionStatus;
   events: EventFrame[];
   pendingApprovals: PendingApproval[];
   lastSeq: number;
   connect: (config: ServerConfig) => void;
   disconnect: () => void;
   decide: (tool_use_id: string, allow: boolean) => void;
+  run: (prompt: string, container?: string) => void;
 }
 
 export function useClaudedWS(): UseClaudedWSResult {
   const [status, setStatus] = useState<ConnectionStatus>('disconnected');
+  const [sessionStatus, setSessionStatus] = useState<SessionStatus>('idle');
   const [events, setEvents] = useState<EventFrame[]>([]);
   const [pendingApprovals, setPendingApprovals] = useState<PendingApproval[]>([]);
   const [lastSeq, setLastSeq] = useState(0);
 
   const wsRef = useRef<WebSocket | null>(null);
-  const configRef = useRef<ServerConfig | null>(null);
   const lastSeqRef = useRef(0);
   const resolvedToolIds = useRef<Set<string>>(new Set<string>());
 
@@ -38,14 +40,35 @@ export function useClaudedWS(): UseClaudedWSResult {
     );
   }, []);
 
+  const run = useCallback((prompt: string, container?: string) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: 'run',
+        prompt,
+        container: container || null,
+      }));
+    }
+  }, []);
+
   const disconnect = useCallback(() => {
     wsRef.current?.close();
     wsRef.current = null;
     setStatus('disconnected');
+    setSessionStatus('idle');
   }, []);
 
-  const processApprovals = useCallback((frame: EventFrame) => {
+  const processEvent = useCallback((frame: EventFrame) => {
     const event = frame.event;
+
+    if (event.type === 'session_started') {
+      setSessionStatus('running');
+      return;
+    }
+    if (event.type === 'session_ended') {
+      setSessionStatus('idle');
+      return;
+    }
+
     if (event.type === 'assistant') {
       const assistantEvent = event as AssistantEvent;
       const toolUseBlocks = assistantEvent.message.content.filter(
@@ -79,8 +102,8 @@ export function useClaudedWS(): UseClaudedWSResult {
 
   const connect = useCallback((config: ServerConfig) => {
     wsRef.current?.close();
-    configRef.current = config;
     setStatus('connecting');
+    setSessionStatus('idle');
     setEvents([]);
     setPendingApprovals([]);
     lastSeqRef.current = 0;
@@ -107,6 +130,8 @@ export function useClaudedWS(): UseClaudedWSResult {
       const msgType = msg['type'] as string | undefined;
 
       if (msgType === 'welcome') {
+        const running = msg['session_running'] as boolean | undefined;
+        setSessionStatus(running ? 'running' : 'idle');
         setStatus('connecting');
         ws.send(JSON.stringify({ type: 'attach', since: 0 }));
         return;
@@ -134,7 +159,7 @@ export function useClaudedWS(): UseClaudedWSResult {
           return [...prev, frame].sort((a: EventFrame, b: EventFrame) => a.seq - b.seq);
         });
 
-        processApprovals(frame);
+        processEvent(frame);
       }
     };
 
@@ -142,9 +167,9 @@ export function useClaudedWS(): UseClaudedWSResult {
     ws.onclose = () => {
       if (wsRef.current === ws) setStatus('disconnected');
     };
-  }, [processApprovals]);
+  }, [processEvent]);
 
   useEffect(() => () => { wsRef.current?.close(); }, []);
 
-  return { status, events, pendingApprovals, lastSeq, connect, disconnect, decide };
+  return { status, sessionStatus, events, pendingApprovals, lastSeq, connect, disconnect, decide, run };
 }

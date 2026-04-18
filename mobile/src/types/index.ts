@@ -64,8 +64,11 @@ export interface PendingApproval {
 
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'authenticating' | 'connected' | 'error';
 
+export type SessionStatus = 'idle' | 'running';
+
 export interface ServerConfig {
   host: string;
   port: string;
   token: string;
+  container?: string;
 }

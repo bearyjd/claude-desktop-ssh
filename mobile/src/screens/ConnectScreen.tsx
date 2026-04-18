@@ -23,6 +23,7 @@ export function ConnectScreen({ status, onConnect }: ConnectScreenProps) {
   const [host, setHost] = useState('');
   const [port, setPort] = useState('7878');
   const [token, setToken] = useState('');
+  const [container, setContainer] = useState('');
 
   useEffect(() => {
     AsyncStorage.getItem(STORAGE_KEY).then(raw => {
@@ -32,12 +33,18 @@ export function ConnectScreen({ status, onConnect }: ConnectScreenProps) {
         setHost(saved.host);
         setPort(saved.port);
         setToken(saved.token);
+        setContainer(saved.container ?? '');
       } catch {}
     });
   }, []);
 
   const handleConnect = async () => {
-    const cfg: ServerConfig = { host: host.trim(), port: port.trim(), token: token.trim() };
+    const cfg: ServerConfig = {
+      host: host.trim(),
+      port: port.trim(),
+      token: token.trim(),
+      container: container.trim() || undefined,
+    };
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(cfg));
     onConnect(cfg);
   };
@@ -92,6 +99,17 @@ export function ConnectScreen({ status, onConnect }: ConnectScreenProps) {
           autoCapitalize="none"
           autoCorrect={false}
           secureTextEntry
+        />
+
+        <Text style={styles.label}>Container <Text style={styles.optional}>(optional)</Text></Text>
+        <TextInput
+          style={styles.input}
+          value={container}
+          onChangeText={setContainer}
+          placeholder="e.g. devbox — leave blank for host"
+          placeholderTextColor="#555"
+          autoCapitalize="none"
+          autoCorrect={false}
         />
 
         <Pressable
@@ -156,6 +174,13 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     marginBottom: 6,
     marginTop: 16,
+  },
+  optional: {
+    fontSize: 11,
+    fontWeight: '400',
+    color: '#555',
+    textTransform: 'none',
+    letterSpacing: 0,
   },
   input: {
     backgroundColor: '#0a0a0a',

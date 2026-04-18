@@ -8,9 +8,15 @@ import { useClaudedWS } from './src/hooks/useClaudedWS';
 import { ServerConfig } from './src/types';
 
 export default function App() {
-  const { status, events, pendingApprovals, lastSeq, connect, disconnect, decide } = useClaudedWS();
+  const { status, sessionStatus, events, pendingApprovals, lastSeq, connect, disconnect, decide, run } = useClaudedWS();
+  const [config, setConfig] = React.useState<ServerConfig | null>(null);
 
-  const isConnected = status === 'connected' || status === 'authenticating';
+  const isConnected = status === 'connected' || status === 'authenticating' || status === 'connecting';
+
+  const handleConnect = (cfg: ServerConfig) => {
+    setConfig(cfg);
+    connect(cfg);
+  };
 
   return (
     <GestureHandlerRootView style={styles.root}>
@@ -18,16 +24,19 @@ export default function App() {
         {isConnected ? (
           <MainScreen
             status={status}
+            sessionStatus={sessionStatus}
             events={events}
             pendingApprovals={pendingApprovals}
             lastSeq={lastSeq}
+            defaultContainer={config?.container}
             onDecide={decide}
             onDisconnect={disconnect}
+            onRun={run}
           />
         ) : (
           <ConnectScreen
             status={status}
-            onConnect={(cfg: ServerConfig) => connect(cfg)}
+            onConnect={handleConnect}
           />
         )}
       </SafeAreaProvider>

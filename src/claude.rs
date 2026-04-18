@@ -14,6 +14,7 @@ const MAX_PAYLOAD: usize = 65_536; // 64 KiB
 
 pub async fn spawn_and_process(
     prompt: &str,
+    container: Option<&str>,
     db: Arc<Mutex<Connection>>,
     _pending: PendingApprovals,
     events_tx: EventTx,
@@ -35,14 +36,21 @@ pub async fn spawn_and_process(
         })
         .context("failed to open PTY")?;
 
-    let mut cmd = CommandBuilder::new(&claude_bin);
-    cmd.args([
-        "--output-format",
-        "stream-json",
-        "--verbose",
-        "-p",
-        prompt,
-    ]);
+    // When a container name is provided, wrap the command with distrobox-enter so
+    // Claude runs inside that container and can access container-only tools.
+    let cmd = match container {
+        Some(c) => {
+            tracing::info!(container = c, "spawning claude inside distrobox container");
+            let mut cmd = CommandBuilder::new("distrobox-enter");
+            cmd.args(["--name", c, "--", &claude_bin, "--output-format", "stream-json", "--verbose", "-p", prompt]);
+            cmd
+        }
+        None => {
+            let mut cmd = CommandBuilder::new(&claude_bin);
+            cmd.args(["--output-format", "stream-json", "--verbose", "-p", prompt]);
+            cmd
+        }
+    };
 
     let mut child = pair
         .slave
