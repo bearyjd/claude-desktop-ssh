@@ -11,13 +11,11 @@
     },
     "android": {
       "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0a0a0a"
       },
       "package": "com.clauded.mobile"
     },
-    "plugins": [
-      "expo-router",
-      "react-native-reanimated"
-    ]
+    "plugins": []
   }
 }
