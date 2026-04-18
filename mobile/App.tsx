@@ -1,4 +1,4 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import React, { useEffect, useRef, useState } from 'react';
@@ -18,13 +18,17 @@ export default function App() {
 
   const configRef = useRef<ServerConfig | null>(null);
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
+  const isConnectedRef = useRef(false);
 
   useEffect(() => { configRef.current = config; }, [config]);
+  useEffect(() => {
+    isConnectedRef.current = status === 'connected' || status === 'authenticating' || status === 'connecting';
+  }, [status]);
 
   // Auto-connect from last session on startup
   useEffect(() => {
     (async () => {
-      const raw = await AsyncStorage.getItem(LAST_CONFIG_KEY);
+      const raw = await SecureStore.getItemAsync(LAST_CONFIG_KEY);
       if (!raw) return;
       try {
         const cfg = JSON.parse(raw) as ServerConfig;
@@ -35,17 +39,17 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Lock on background; reconnect + lock when returning to foreground
+  // Lock on background only; reconnect when returning to foreground if not already connected
   useEffect(() => {
     const sub = AppState.addEventListener('change', (next: AppStateStatus) => {
       const prev = appStateRef.current;
       appStateRef.current = next;
 
-      if (prev === 'active' && (next === 'background' || next === 'inactive')) {
+      if (prev === 'active' && next === 'background') {
         if (configRef.current) setIsLocked(true);
       }
 
-      if (next === 'active' && prev !== 'active' && configRef.current) {
+      if (next === 'active' && prev !== 'active' && configRef.current && !isConnectedRef.current) {
         connect(configRef.current);
       }
     });
@@ -55,7 +59,7 @@ export default function App() {
   const handleConnect = async (cfg: ServerConfig) => {
     setConfig(cfg);
     configRef.current = cfg;
-    await AsyncStorage.setItem(LAST_CONFIG_KEY, JSON.stringify(cfg));
+    await SecureStore.setItemAsync(LAST_CONFIG_KEY, JSON.stringify(cfg));
     connect(cfg);
   };
 
@@ -64,7 +68,7 @@ export default function App() {
     setConfig(null);
     configRef.current = null;
     setIsLocked(false);
-    await AsyncStorage.removeItem(LAST_CONFIG_KEY);
+    await SecureStore.deleteItemAsync(LAST_CONFIG_KEY);
   };
 
   const isConnected = status === 'connected' || status === 'authenticating' || status === 'connecting';

@@ -46,6 +46,16 @@ pub fn events_since(conn: &Connection, since: i64) -> Result<Vec<(i64, f64, Stri
     Ok(rows)
 }
 
+/// Return the highest seq currently in the DB (0 if empty).
+pub fn head_seq(conn: &Connection) -> Result<i64> {
+    conn.query_row(
+        "SELECT COALESCE(MAX(seq), 0) FROM events",
+        [],
+        |r| r.get(0),
+    )
+    .context("head_seq failed")
+}
+
 /// Enforce per-session event cap: drop oldest events beyond 10,000.
 pub fn enforce_retention(conn: &Connection) -> Result<()> {
     conn.execute(

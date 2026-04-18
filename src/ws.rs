@@ -111,7 +111,11 @@ async fn handle_ws(
     };
 
     let is_running = session_running.load(Ordering::SeqCst);
-    sink.send(welcome(&client_id, is_running))
+    let head_seq = {
+        let conn = db.lock().unwrap();
+        db::head_seq(&conn).unwrap_or(0)
+    };
+    sink.send(welcome(&client_id, is_running, head_seq))
         .await
         .context("failed to send welcome")?;
     tracing::info!(%client_id, session_running = is_running, "WS authenticated");
@@ -299,12 +303,13 @@ fn event_frame(seq: i64, ts: f64, json: &str) -> Result<String> {
     .context("failed to serialize event frame")
 }
 
-fn welcome(client_id: &str, session_running: bool) -> Message {
+fn welcome(client_id: &str, session_running: bool, head_seq: i64) -> Message {
     Message::Text(
         serde_json::to_string(&serde_json::json!({
             "type": "welcome",
             "client_id": client_id,
             "session_running": session_running,
+            "head_seq": head_seq,
         }))
         .unwrap(),
     )

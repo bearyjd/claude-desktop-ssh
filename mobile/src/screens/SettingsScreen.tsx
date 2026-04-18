@@ -1,6 +1,6 @@
+import * as Clipboard from 'expo-clipboard';
 import React, { useEffect, useState } from 'react';
 import {
-  Clipboard,
   Linking,
   Modal,
   Pressable,
@@ -30,9 +30,9 @@ export function SettingsScreen({ visible, onClose, notifyConfig, onRequestNotify
     }
   }, [visible, onRequestNotifyConfig]);
 
-  const handleCopy = () => {
+  const handleCopy = async () => {
     if (!notifyConfig?.topic) return;
-    Clipboard.setString(notifyConfig.topic);
+    await Clipboard.setStringAsync(notifyConfig.topic);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };

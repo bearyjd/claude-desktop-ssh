@@ -16,6 +16,8 @@
       },
       "package": "com.clauded.mobile"
     },
-    "plugins": []
+    "plugins": [
+      "expo-secure-store"
+    ]
   }
 }

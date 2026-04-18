@@ -1,5 +1,5 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as LocalAuthentication from 'expo-local-authentication';
+import * as SecureStore from 'expo-secure-store';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -21,7 +21,7 @@ export function LockScreen({ onUnlock }: LockScreenProps) {
   const [error, setError] = useState('');
 
   const showPinEntry = useCallback(async () => {
-    const stored = await AsyncStorage.getItem(PIN_KEY);
+    const stored = await SecureStore.getItemAsync(PIN_KEY);
     if (stored === PIN_NONE) {
       onUnlock();
     } else if (stored) {
@@ -38,8 +38,8 @@ export function LockScreen({ onUnlock }: LockScreenProps) {
     if (hasHardware && isEnrolled) {
       const result = await LocalAuthentication.authenticateAsync({
         promptMessage: 'Unlock clauded',
-        fallbackLabel: 'Use PIN',
-        disableDeviceFallback: false,
+        // Device passcode bypass disabled — app PIN is the fallback, not the device lock.
+        disableDeviceFallback: true,
       });
       if (result.success) {
         onUnlock();
@@ -67,7 +67,7 @@ export function LockScreen({ onUnlock }: LockScreenProps) {
 
     if (mode === 'pin_entry') {
       (async () => {
-        const stored = await AsyncStorage.getItem(PIN_KEY);
+        const stored = await SecureStore.getItemAsync(PIN_KEY);
         if (next === stored) {
           onUnlock();
         } else {
@@ -82,7 +82,7 @@ export function LockScreen({ onUnlock }: LockScreenProps) {
     } else if (mode === 'pin_setup_confirm') {
       if (next === setupPin) {
         (async () => {
-          await AsyncStorage.setItem(PIN_KEY, next);
+          await SecureStore.setItemAsync(PIN_KEY, next);
           onUnlock();
         })();
       } else {
@@ -95,7 +95,7 @@ export function LockScreen({ onUnlock }: LockScreenProps) {
   };
 
   const handleSkip = async () => {
-    await AsyncStorage.setItem(PIN_KEY, PIN_NONE);
+    await SecureStore.setItemAsync(PIN_KEY, PIN_NONE);
     onUnlock();
   };
 

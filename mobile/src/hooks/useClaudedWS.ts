@@ -157,12 +157,6 @@ export function useClaudedWS(): UseClaudedWSResult {
   const connect = useCallback((config: ServerConfig) => {
     wsRef.current?.close();
     setStatus('connecting');
-    setSessionStatus('idle');
-    setEvents([]);
-    setPendingApprovals([]);
-    lastSeqRef.current = 0;
-    setLastSeq(0);
-    resolvedToolIds.current = new Set<string>();
 
     const since = storedSinceRef.current;
     const url = `ws://${config.host}:${config.port}`;
@@ -186,10 +180,20 @@ export function useClaudedWS(): UseClaudedWSResult {
 
       if (msgType === 'welcome') {
         const running = msg['session_running'] as boolean | undefined;
+        const serverHeadSeq = msg['head_seq'] as number | undefined;
+        const effectiveSince = (serverHeadSeq !== undefined && since > serverHeadSeq) ? 0 : since;
+
         sessionRunningRef.current = running ?? false;
         setSessionStatus(running ? 'running' : 'idle');
         setStatus('connecting');
-        ws.send(JSON.stringify({ type: 'attach', since }));
+
+        setEvents([]);
+        setPendingApprovals([]);
+        lastSeqRef.current = 0;
+        setLastSeq(0);
+        resolvedToolIds.current = new Set<string>();
+
+        ws.send(JSON.stringify({ type: 'attach', since: effectiveSince }));
         return;
       }
 

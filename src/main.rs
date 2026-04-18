@@ -60,6 +60,7 @@ async fn main() -> Result<()> {
         pending.clone(),
         buffered.clone(),
         events_tx.clone(),
+        db.clone(),
         cfg.approval_ttl_secs,
         cfg.approval_warn_before_secs,
     ));
