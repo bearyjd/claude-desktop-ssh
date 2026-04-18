@@ -44,27 +44,54 @@ process exits
 
 ### How approval actually works
 
-Claude Code runs a `PreToolUse` hook subprocess before each tool call. The hook:
-- Receives the full tool call as JSON on stdin
-- Exit 0 → allow
-- Exit 2 + stdout message → block with reason
-- **Blocks as long as it needs to** — this is the pause gate
+Claude Code has two layers: a built-in permission system (fires immediately, causes `permission_denials`) and a hooks system (`PreToolUse` hook, runs as a subprocess). In default `permissionMode`, the built-in check fires **before** any hook and denies unapproved tools instantly — the hook never gets a chance.
 
-`clauded` ships a hook binary at `~/.config/clauded/hooks/pre-tool-use`. The hook POSTs to clauded's internal approval endpoint and blocks until the daemon responds. The daemon broadcasts the pending approval over WebSocket; the first client to respond wins.
+The daemon must spawn Claude with `--dangerously-skip-permissions` to disable the built-in gate. The `PreToolUse` hook then becomes the sole approval mechanism.
+
+```bash
+claude --output-format stream-json --dangerously-skip-permissions \
+  --verbose -p "..."
+```
+
+`clauded` writes a hook config to `~/.claude/settings.local.json` (atomic tempfile + rename) before spawning:
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [{
+      "matcher": ".*",
+      "command": "/absolute/path/to/clauded-hook"
+    }]
+  }
+}
+```
+
+The hook binary:
+- Receives full tool call JSON on stdin (includes `tool_use_id` — the correlation key)
+- Connects to daemon Unix socket at `$XDG_RUNTIME_DIR/clauded/hook.sock` (500ms connect timeout)
+- Sends `{"tool_use_id": "...", "tool_name": "...", "input": {...}}` and blocks
+- Daemon responds `{"decision": "allow"}` or `{"decision": "deny", "reason": "..."}`
+- Exit 0 → allow, exit 2 → block. **Any error path exits 2. Never fail open.**
 
 ```
-[claude --output-format stream-json]
-    stdout → tool_use event → clauded (captures, logs to SQLite)
-    PreToolUse hook fires (blocking subprocess)
-        → hook POST /internal/approval  (IPC to clauded)
-        → clauded broadcasts pending_approval to WebSocket clients
+[claude --dangerously-skip-permissions --output-format stream-json]
+    stdout → tool_use event → clauded (log to SQLite, note tool_use_id)
+    PreToolUse hook fires (blocking subprocess, keyed by tool_use_id)
+        → hook connects to $XDG_RUNTIME_DIR/clauded/hook.sock
+        → daemon correlates by tool_use_id, broadcasts pending_approval to WebSocket
         → user approves/denies from phone or desktop
-        → clauded responds to hook
+        → daemon writes decision to hook socket connection
         → hook exits 0 (allow) or 2 (deny)
-    stdout → tool_result event → clauded (captures, logs, broadcasts)
+    stdout → tool_result event → clauded (log, broadcast)
 ```
 
-Do not write the WebSocket layer until you have a working PreToolUse hook that blocks and responds to an IPC signal.
+**Concurrent tool calls:** Claude may invoke multiple tools in parallel. The daemon maintains a `HashMap<tool_use_id, ApprovalSender>` — N independent pending approvals, not a global slot. Each hook connection is independent.
+
+**Hook disconnect:** If the hook process dies mid-wait (OOM, signal), the Unix socket connection closes. The daemon must detect this and garbage-collect the pending approval entry.
+
+**Security:** The hook socket parent dir is `chmod 700`. Daemon verifies `SO_PEERCRED` on each connection to confirm the peer PID descends from the spawned claude process. Hook binary path must be absolute and not world-writable.
+
+Do not write the WebSocket layer until you have a working PreToolUse hook that blocks on IPC, correlates by `tool_use_id`, and correctly gates tool execution with fail-closed behavior.
 
 ## Protocol (v0)
 
@@ -103,15 +130,15 @@ After `attach`, all input on that connection is routed to that session. To switc
 Approval is gated by a `PreToolUse` hook subprocess, not stdin. The hook blocks claude until the daemon resolves it.
 
 ```json
-// hook fires → daemon receives IPC, broadcasts to all WebSocket clients:
-{"seq": 50, "event": {"type": "tool_use", "name": "Write", "input": {...}}}
+// hook fires → daemon correlates by tool_use_id, broadcasts to all WebSocket clients:
+{"seq": 50, "event": {"type": "tool_use", "name": "Write", "tool_use_id": "tu_abc", "input": {...}}}
 
-// first client to respond wins:
-{"type": "input", "text": "y"}   // or "n"
+// first client to respond wins (must include tool_use_id to handle concurrent approvals):
+{"type": "input", "tool_use_id": "tu_abc", "decision": "y"}   // or "n"
 
-// daemon resolves the IPC → hook exits 0 (allow) or 2 (deny)
+// daemon resolves the hook IPC → hook exits 0 (allow) or 2 (deny)
 // daemon broadcasts resolution to all clients:
-{"type": "approval_resolved", "by": "client-id", "decision": "y"}
+{"type": "approval_resolved", "tool_use_id": "tu_abc", "by": "client-id", "decision": "y"}
 ```
 
 Default approval timeout: 1800s (configurable). On timeout, daemon resolves deny → hook exits 2 → broadcasts `approval_timeout`.
