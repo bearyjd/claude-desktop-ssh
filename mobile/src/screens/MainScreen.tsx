@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  FlatList,
   Pressable,
   ScrollView,
   Share,
@@ -11,6 +12,7 @@ import {
 import { ChatView } from '../components/ChatView';
 import { DirPicker } from '../components/DirPicker';
 import { EventFeed } from '../components/EventFeed';
+import { SessionCard } from '../components/SessionCard';
 import { VoiceButton } from '../components/VoiceButton';
 import { SettingsScreen } from './SettingsScreen';
 import { ConnectionStatus, DirListingEvent, EventFrame, PendingApproval, SessionInfo, SessionStatus } from '../types';
@@ -189,8 +191,27 @@ export function MainScreen({
         </View>
       </View>
 
-      {/* Session pill switcher */}
-      {sessions.length > 0 && (
+      {/* Session dashboard (multiple sessions) or pill switcher (single session) */}
+      {sessions.length > 1 && (
+        <View style={styles.dashboardRow}>
+          <FlatList
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            data={sessions}
+            keyExtractor={s => s.session_id}
+            contentContainerStyle={styles.dashboardContent}
+            renderItem={({ item: s }) => (
+              <SessionCard
+                session={s}
+                isActive={s.session_id === activeSessionId}
+                onSelect={onSetActiveSessionId}
+                hasPendingApproval={s.session_id === activeSessionId && pendingApprovals.length > 0}
+              />
+            )}
+          />
+        </View>
+      )}
+      {sessions.length === 1 && (
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -450,6 +471,15 @@ const styles = StyleSheet.create({
   skipPermsTextOn: { color: '#f87171', fontWeight: '700' },
   skipPermsToggleConfirming: { borderColor: '#78350f', backgroundColor: '#1c110a' },
   skipPermsTextConfirming: { color: '#fbbf24', fontWeight: '600' },
+
+  dashboardRow: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#1a1a1a',
+    paddingVertical: 10,
+  },
+  dashboardContent: {
+    paddingHorizontal: 12,
+  },
 
   pillsRow: {
     borderBottomWidth: 1,

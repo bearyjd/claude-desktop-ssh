@@ -26,29 +26,18 @@ Self-hosted, subscription-free AI agent remote control — a Rust PTY daemon + R
 - `kill_session`, `list_sessions`, `session_list_changed` WS messages
 - Mobile: horizontal pill switcher; ChatView filters by `activeSessionId`
 
+### Sprint 4 — Multi-provider / agent-agnostic support
+- `command` field accepted in `run` WS message; daemon resolves binary (`claude`, `codex`, `gemini`, `aider`, custom)
+- Mobile: horizontal agent picker pills (claude / codex / gemini / aider) in session-start UI
+- Falls back to `CLAUDE_BIN` env var or `claude` when no command specified
+
+### Sprint 5 — Visual diff review on mobile
+- `DiffView.tsx`: collapsible unified diff viewer with +/- line coloring and hunk headers
+- Integrated into expanded tool_result blocks in ChatView
+
 ---
 
 ## Next Up
-
-### Sprint 4 — Multi-provider / agent-agnostic support *(P0)*
-
-Every direct competitor (AgentsRoom, ClawTab, AgentApprove, Nimbalyst, Warp) supports multiple agent CLIs. clauded's PTY daemon is already agent-agnostic at the architecture level — Claude Code is just a subprocess. Surfacing this at the config/UI level unlocks 3–5× the addressable market.
-
-**Scope:**
-- Daemon: configurable `command` in session start message (today hardcoded to `claude`)
-- Support: Codex (`openai codex`), Gemini CLI (`gemini`), Aider (`aider`), OpenCode
-- Mobile: session-start UI lets user pick agent or enter custom command
-- Hook binary remains unchanged (PTY-level intercept is agent-agnostic)
-
-### Sprint 5 — Visual diff review on mobile *(P0)*
-
-The most-cited missing feature in comparable tools. When an agent modifies files, the approval decision requires seeing what changed — raw terminal ANSI is unreadable on a small screen.
-
-**Scope:**
-- Parse unified diff blocks from the PTY stream
-- `DiffView` component: swipeable file-by-file, red/green line highlighting
-- Integrate into `ApprovalCard` when tool is `Write`/`Edit`/`MultiEdit`
-- Full-screen expandable diff viewer
 
 ### Sprint 6 — Session dashboard *(P1)*
 
@@ -84,7 +73,7 @@ WebSocket drops on network change (WiFi → cellular, subway tunnels, sleep). Mo
 
 | Bug | Area | Notes |
 |---|---|---|
-| Directory selector does not work | Mobile / session start | Working directory picker UI is broken; users cannot select which directory Claude runs in |
+| Directory selector does not work | Mobile / session start | Fixed — server sends plain {type:'dir_listing'} without seq/event wrapper; added top-level handler in ws.onmessage before seq check |
 
 ---
 
@@ -107,7 +96,7 @@ WebSocket drops on network change (WiFi → cellular, subway tunnels, sleep). Mo
 
 | Competitor | Self-hosted | No subscription | Android | Multi-agent | Diff review | Watch |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|
-| **clauded** | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
+| **clauded** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
 | Anthropic Remote Control | ❌ | ❌ ($100+/mo) | ✅ | ❌ | ❌ | ❌ |
 | AgentsRoom | ❌ | ❌ | ✅ | ✅ | Partial | ❌ |
 | Nimbalyst | ❌ | ❌ | ❌ | Partial | ✅ | ❌ |
