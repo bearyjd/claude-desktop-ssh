@@ -10,7 +10,7 @@ import {
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, Linking, Modal, PermissionsAndroid, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-// PTT max hold — Soda starts to misbehave past a few minutes; cap to 3.
+// Tap-to-toggle max recording — Soda starts to misbehave past a few minutes; cap to 3.
 const MAX_RECORDING_MS = 3 * 60 * 1000;
 // Android 16 fix: Soda's default LANGUAGE_MODEL flipped to AMBIENT_ONESHOT
 // after the Sept 2025 security patch. Without web_search, dictation returns
@@ -273,22 +273,23 @@ export function VoiceButton({ onTranscript, disabled }: VoiceButtonProps) {
   // flowed and skips the hang handler.
   const audioSeenRef = useRef(false);
 
-  // ── PTT (push-to-talk) state ────────────────────────────────────────────
-  // True while the user's finger is on the button. Async paths must check
-  // this between awaits so a release in flight aborts the start.
+  // ── Tap-to-toggle recording state ───────────────────────────────────────
+  // True while a recording session is active (between the start tap and the
+  // end tap). Async paths must check this between awaits so a stop in flight
+  // aborts the start.
   const pressActiveRef = useRef(false);
   // Per-utterance final segments, joined into the composed transcript.
-  // continuous: true emits multiple isFinal results during a hold (Soda
+  // continuous: true emits multiple isFinal results during a session (Soda
   // re-arms after each utterance boundary); we accumulate, then flush on
-  // release as a single isFinal=true callback.
+  // stop as a single isFinal=true callback.
   const finalSegmentsRef = useRef<string[]>([]);
   // Latest in-progress (isFinal=false) transcript for the current utterance.
   const interimRef = useRef('');
-  // Which engine the active hold is using — used by handlePressOut to route
-  // to stopOnDevice or finishWhisper without re-reading AsyncStorage.
+  // Which engine the active session is using — used by handlePressOut to
+  // route to stopOnDevice or finishWhisper without re-reading AsyncStorage.
   const activeEngineRef = useRef<'ondevice' | 'whisper' | null>(null);
-  // Safety cap timer — auto-releases at MAX_RECORDING_MS so a stuck
-  // touch state can't pin the mic open forever.
+  // Safety cap timer — auto-stops at MAX_RECORDING_MS so a forgotten
+  // session can't pin the mic open forever.
   const maxDurationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Note: com.google.android.tts is intentionally NOT blacklisted. expo-speech-recognition
@@ -487,7 +488,7 @@ export function VoiceButton({ onTranscript, disabled }: VoiceButtonProps) {
   const stopListeningRef = useRef(stopListening);
   useEffect(() => { stopListeningRef.current = stopListening; });
 
-  // PTT helpers ───────────────────────────────────────────────────────────
+  // Recording helpers ─────────────────────────────────────────────────────
   const composeText = useCallback(() => {
     const finals = finalSegmentsRef.current.join(' ').trim();
     const interim = interimRef.current.trim();
@@ -507,7 +508,7 @@ export function VoiceButton({ onTranscript, disabled }: VoiceButtonProps) {
     }
   }, []);
 
-  // Fires the native recognizer. Shared by the PTT press-in path, post-detection
+  // Fires the native recognizer. Shared by the start-tap path, post-detection
   // auto-start, and picker auto-start — all share the same start options.
   //
   // Android 16 (Sept 2025 security patch) flipped Soda's default LANGUAGE_MODEL
@@ -604,7 +605,7 @@ export function VoiceButton({ onTranscript, disabled }: VoiceButtonProps) {
         audioSeenRef.current = true;
         clearWatchdogRef.current();
         if (!transcript) return;
-        // PTT accumulator: continuous: true emits multiple isFinal results
+        // Accumulator: continuous: true emits multiple isFinal results
         // (one per utterance boundary). We collect finals and overwrite the
         // interim slot, then emit the composed text as a non-final update so
         // MainScreen shows the in-progress transcript without committing.
@@ -725,7 +726,7 @@ export function VoiceButton({ onTranscript, disabled }: VoiceButtonProps) {
     const endSub = ExpoSpeechRecognitionModule.addListener('end', () => {
       logEventRef.current('end');
       clearWatchdogRef.current();
-      // PTT flush: commit the composed transcript as a single isFinal=true
+      // Flush: commit the composed transcript as a single isFinal=true
       // emission, then clear the accumulator. The session ends here whether
       // the user released, the watchdog fired, or Soda closed itself.
       const text = composeText();
@@ -791,7 +792,7 @@ export function VoiceButton({ onTranscript, disabled }: VoiceButtonProps) {
     }
   }, []);
 
-  // ── On-device PTT (Android SpeechRecognizer) ────────────────────────────
+  // ── On-device recording (Android SpeechRecognizer) ──────────────────────
 
   const startOnDevice = useCallback(async () => {
     setErrMsg('');
@@ -823,7 +824,7 @@ export function VoiceButton({ onTranscript, disabled }: VoiceButtonProps) {
     }
   }, [resetAccumulator]);
 
-  // ── Whisper API PTT ─────────────────────────────────────────────────────
+  // ── Whisper API recording ───────────────────────────────────────────────
 
   const startWhisper = useCallback(async () => {
     setErrMsg('');
@@ -901,7 +902,7 @@ export function VoiceButton({ onTranscript, disabled }: VoiceButtonProps) {
     }
   }, []);
 
-  // ── PTT router (onPressIn / onPressOut) ─────────────────────────────────
+  // ── Tap-to-toggle router (onPressIn starts, onPressOut stops) ───────────
 
   const handlePressIn = useCallback(async () => {
     if (detecting || disabled) return;
@@ -909,13 +910,13 @@ export function VoiceButton({ onTranscript, disabled }: VoiceButtonProps) {
     pressActiveRef.current = true;
     errPersistRef.current = false;
     setErrMsg('');
-    // Safety cap — auto-release if the touch state ever sticks.
+    // Safety cap — auto-stop if the session ever sticks open.
     clearMaxTimer();
     maxDurationTimer.current = setTimeout(() => {
       maxDurationTimer.current = null;
       if (pressActiveRef.current) {
-        logEventRef.current('ptt.max-duration');
-        // Synthesize a release; engine routing reads activeEngineRef.
+        logEventRef.current('recording.max-duration');
+        // Synthesize a stop; engine routing reads activeEngineRef.
         pressActiveRef.current = false;
         if (activeEngineRef.current === 'whisper') void finishWhisper();
         else stopOnDevice();
@@ -924,7 +925,7 @@ export function VoiceButton({ onTranscript, disabled }: VoiceButtonProps) {
     }, MAX_RECORDING_MS);
 
     const engine = await AsyncStorage.getItem(STT_ENGINE_KEY);
-    if (!pressActiveRef.current) return; // released before engine resolved
+    if (!pressActiveRef.current) return; // stopped before engine resolved
     activeEngineRef.current = engine === 'whisper' ? 'whisper' : 'ondevice';
     if (activeEngineRef.current === 'whisper') {
       await startWhisper();
@@ -944,7 +945,7 @@ export function VoiceButton({ onTranscript, disabled }: VoiceButtonProps) {
     } else if (engine === 'ondevice') {
       stopOnDevice();
     }
-    // engine === null means user released before AsyncStorage resolved;
+    // engine === null means user stopped before AsyncStorage resolved;
     // pressActiveRef guard in startOnDevice/startWhisper aborts the start.
   }, [clearMaxTimer, finishWhisper, stopOnDevice]);
 

@@ -74,9 +74,10 @@ function renderButton(props: { disabled?: boolean } = {}) {
   return render(<VoiceButton onTranscript={onTranscript} {...props} />);
 }
 
-// PTT helpers — drive the press lifecycle directly. Default jest preset has
-// Platform.OS === 'ios' so the on-device path goes through expo-speech-recognition's
-// requestPermissionsAsync (not Android's PermissionsAndroid).
+// Tap helpers — drive the start (pressIn) and stop (pressOut) lifecycle
+// directly. Default jest preset has Platform.OS === 'ios' so the on-device
+// path goes through expo-speech-recognition's requestPermissionsAsync (not
+// Android's PermissionsAndroid).
 async function pressIn(node: ReturnType<ReturnType<typeof render>['getByText']>) {
   await act(async () => { fireEvent(node, 'pressIn'); });
 }
@@ -134,8 +135,8 @@ describe('VoiceButton — render', () => {
   });
 });
 
-describe('VoiceButton — on-device PTT (default)', () => {
-  it('starts recognition with the Android 16 fix flags on press-in', async () => {
+describe('VoiceButton — on-device tap-to-toggle (default)', () => {
+  it('starts recognition with the Android 16 fix flags on start tap', async () => {
     const { getByText } = renderButton();
     await pressIn(getByText('⏺'));
     await waitFor(() => expect(mockStart).toHaveBeenCalledTimes(1));
@@ -149,7 +150,7 @@ describe('VoiceButton — on-device PTT (default)', () => {
     expect(getByText('⏹')).toBeTruthy();
   });
 
-  it('stops recognition on press-out', async () => {
+  it('stops recognition on stop tap', async () => {
     const { getByText } = renderButton();
     await pressIn(getByText('⏺'));
     await waitFor(() => expect(getByText('⏹')).toBeTruthy());
@@ -164,7 +165,7 @@ describe('VoiceButton — on-device PTT (default)', () => {
     await waitFor(() => expect(getByText(/Microphone permission is required/)).toBeTruthy());
   });
 
-  it('emits interim transcripts as non-final during a hold', async () => {
+  it('emits interim transcripts as non-final during a session', async () => {
     const { getByText } = renderButton();
     await pressIn(getByText('⏺'));
     await waitFor(() => expect(getByText('⏹')).toBeTruthy());
@@ -179,12 +180,12 @@ describe('VoiceButton — on-device PTT (default)', () => {
     expect(getByText('⏹')).toBeTruthy();
   });
 
-  it('emits per-utterance finals as non-final composed text, then a single isFinal on release', async () => {
+  it('emits per-utterance finals as non-final composed text, then a single isFinal on stop tap', async () => {
     const { getByText } = renderButton();
     await pressIn(getByText('⏺'));
     await waitFor(() => expect(getByText('⏹')).toBeTruthy());
 
-    // First utterance final — should NOT terminate the hold
+    // First utterance final — should NOT terminate the session
     await act(async () => {
       listeners['result']?.({ results: [{ transcript: 'hello' }], isFinal: true });
     });
@@ -198,7 +199,7 @@ describe('VoiceButton — on-device PTT (default)', () => {
     expect(onTranscript).toHaveBeenLastCalledWith('hello world', false);
     expect(getByText('⏹')).toBeTruthy();
 
-    // Release — end fires, composed text is committed as isFinal=true
+    // Stop tap — end fires, composed text is committed as isFinal=true
     await pressOut(getByText('⏹'));
     await act(async () => { listeners['end']?.({}); });
     await waitFor(() => expect(onTranscript).toHaveBeenLastCalledWith('hello world', true));
@@ -235,19 +236,19 @@ describe('VoiceButton — on-device PTT (default)', () => {
   });
 });
 
-describe('VoiceButton — Whisper engine PTT', () => {
+describe('VoiceButton — Whisper engine tap-to-toggle', () => {
   beforeEach(() => {
     mockAsyncStorageGetItem.mockResolvedValue('whisper');
   });
 
-  it('starts audio recording on press-in', async () => {
+  it('starts audio recording on start tap', async () => {
     const { getByText } = renderButton();
     await pressIn(getByText('⏺'));
     await waitFor(() => expect(mockCreateAsync).toHaveBeenCalledTimes(1));
     expect(getByText('⏹')).toBeTruthy();
   });
 
-  it('stops recording and delivers transcript on press-out', async () => {
+  it('stops recording and delivers transcript on stop tap', async () => {
     (globalThis as { fetch: unknown }).fetch = jest.fn().mockResolvedValue({
       ok: true,
       json: async () => ({ text: 'whisper transcript' }),
