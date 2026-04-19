@@ -12,6 +12,11 @@ import { Animated, Linking, Modal, PermissionsAndroid, Platform, Pressable, Scro
 
 // Tap-to-toggle max recording — Soda starts to misbehave past a few minutes; cap to 3.
 const MAX_RECORDING_MS = 3 * 60 * 1000;
+
+// Recognizer packages to actively reject if seen in storage. Module-level so
+// it doesn't re-allocate on every render. Empty by default — com.google.android.tts
+// is intentionally NOT here (see notes below).
+const KNOWN_BAD_PKGS: readonly string[] = [];
 // Android 16 fix: Soda's default LANGUAGE_MODEL flipped to AMBIENT_ONESHOT
 // after the Sept 2025 security patch. Without web_search, dictation returns
 // empty transcripts. See ./docs/learnings or memory/android16-stt-soda-ambient-fix.md.
@@ -292,9 +297,8 @@ export function VoiceButton({ onTranscript, disabled }: VoiceButtonProps) {
   // session can't pin the mic open forever.
   const maxDurationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Note: com.google.android.tts is intentionally NOT blacklisted. expo-speech-recognition
-  // docs explicitly list it as a valid getDefaultRecognitionService() return on some devices.
-  const KNOWN_BAD_PKGS: string[] = [];
+  // Note: com.google.android.tts is intentionally NOT in KNOWN_BAD_PKGS (defined at module scope).
+  // expo-speech-recognition docs explicitly list it as a valid getDefaultRecognitionService() return on some devices.
 
   // Self-heal: clear stuck whisper state or known-bad recognizer packages
   useEffect(() => {
@@ -760,6 +764,20 @@ export function VoiceButton({ onTranscript, disabled }: VoiceButtonProps) {
       (p) => p !== (option.pkg || null),
     );
     showErrRef.current(`Using ${option.label}`, 1500);
+    // Arm the same session state handlePressIn would set so the 3-min safety cap
+    // and stop-tap routing apply to picker-started sessions too. Picker is on-device only.
+    pressActiveRef.current = true;
+    activeEngineRef.current = 'ondevice';
+    clearMaxTimer();
+    maxDurationTimer.current = setTimeout(() => {
+      maxDurationTimer.current = null;
+      if (pressActiveRef.current) {
+        logEventRef.current('recording.max-duration');
+        pressActiveRef.current = false;
+        activeEngineRef.current = null;
+        stopOnDevice();
+      }
+    }, MAX_RECORDING_MS);
     await startRecognizerRef.current(option.pkg || null);
   };
 
@@ -918,8 +936,14 @@ export function VoiceButton({ onTranscript, disabled }: VoiceButtonProps) {
         logEventRef.current('recording.max-duration');
         // Synthesize a stop; engine routing reads activeEngineRef.
         pressActiveRef.current = false;
-        if (activeEngineRef.current === 'whisper') void finishWhisper();
-        else stopOnDevice();
+        if (activeEngineRef.current === 'whisper') {
+          finishWhisper().catch((e: unknown) => {
+            const msg = e instanceof Error ? e.message : String(e);
+            showErrRef.current(msg.slice(0, 60));
+          });
+        } else {
+          stopOnDevice();
+        }
         activeEngineRef.current = null;
       }
     }, MAX_RECORDING_MS);
