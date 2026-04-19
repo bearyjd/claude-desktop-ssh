@@ -30,7 +30,7 @@ interface MainScreenProps {
   notifyConfig: NotifyConfig | null;
   onDecide: (tool_use_id: string, allow: boolean) => void;
   onDisconnect: () => void;
-  onRun: (prompt: string, container?: string, dangerouslySkipPermissions?: boolean, workDir?: string) => void;
+  onRun: (prompt: string, container?: string, dangerouslySkipPermissions?: boolean, workDir?: string, command?: string) => void;
   onKill: (sessionId?: string) => void;
   onRequestNotifyConfig: () => void;
   listDir: (path: string, cb: (ev: DirListingEvent) => void) => void;
@@ -70,10 +70,14 @@ export function MainScreen({
   onRequestNotifyConfig,
   listDir,
 }: MainScreenProps) {
+  const AGENTS = ['claude', 'codex', 'gemini', 'aider'] as const;
+  type AgentName = typeof AGENTS[number];
+
   const [prompt, setPrompt] = useState('');
   const [isVoiceInterim, setIsVoiceInterim] = useState(false);
   const [container, setContainer] = useState(defaultContainer ?? '');
   const [workDir, setWorkDir] = useState('');
+  const [selectedAgent, setSelectedAgent] = useState<AgentName>('claude');
   const [dirPickerOpen, setDirPickerOpen] = useState(false);
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [dangerouslySkipPermissions, setDangerouslySkipPermissions] = useState(false);
@@ -134,7 +138,8 @@ export function MainScreen({
   const handleRun = () => {
     const p = prompt.trim();
     if (!p) return;
-    onRun(p, container.trim() || undefined, dangerouslySkipPermissions, workDir.trim() || undefined);
+    const agentCommand = selectedAgent !== 'claude' ? selectedAgent : undefined;
+    onRun(p, container.trim() || undefined, dangerouslySkipPermissions, workDir.trim() || undefined, agentCommand);
     setPrompt('');
     setIsVoiceInterim(false);
   };
@@ -252,6 +257,18 @@ export function MainScreen({
               <Text style={styles.runBtnText}>Run</Text>
             </Pressable>
           </View>
+
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.agentRow} contentContainerStyle={styles.agentRowContent}>
+            {AGENTS.map(a => (
+              <Pressable
+                key={a}
+                style={[styles.agentPill, selectedAgent === a && styles.agentPillActive]}
+                onPress={() => setSelectedAgent(a)}
+              >
+                <Text style={[styles.agentPillText, selectedAgent === a && styles.agentPillTextActive]}>{a}</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
 
           <Pressable onPress={() => setDirPickerOpen(true)} style={styles.dirBtn}>
             <Text style={styles.dirBtnText} numberOfLines={1}>
@@ -401,6 +418,12 @@ const styles = StyleSheet.create({
   runBtn: { backgroundColor: '#e2e8f0', borderRadius: 8, paddingHorizontal: 20, paddingVertical: 10 },
   runBtnDisabled: { opacity: 0.35 },
   runBtnText: { color: '#0a0a0a', fontWeight: '700', fontSize: 14 },
+  agentRow: { flexGrow: 0 },
+  agentRowContent: { flexDirection: 'row', gap: 6, paddingVertical: 4 },
+  agentPill: { paddingHorizontal: 12, paddingVertical: 5, borderRadius: 12, borderWidth: 1, borderColor: '#2a2a2a', backgroundColor: '#0d0d0d' },
+  agentPillActive: { borderColor: '#818cf8', backgroundColor: '#1e1b4b' },
+  agentPillText: { color: '#71717a', fontSize: 12, fontWeight: '500' },
+  agentPillTextActive: { color: '#a5b4fc', fontWeight: '700' },
   dirBtn: {
     borderRadius: 8,
     borderWidth: 1,

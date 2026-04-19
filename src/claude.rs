@@ -20,6 +20,7 @@ pub async fn spawn_and_process(
     container: Option<&str>,
     dangerously_skip_permissions: bool,
     work_dir: Option<&str>,
+    command: Option<&str>,
     session_id: &str,
     kill_rx: oneshot::Receiver<()>,
     db: Arc<Mutex<Connection>>,
@@ -30,7 +31,8 @@ pub async fn spawn_and_process(
         write_hook_settings().context("failed to write hook settings")?;
     }
 
-    let claude_bin = std::env::var("CLAUDE_BIN").unwrap_or_else(|_| "claude".to_string());
+    let env_bin = std::env::var("CLAUDE_BIN").unwrap_or_else(|_| "claude".to_string());
+    let claude_bin = command.unwrap_or(&env_bin).to_string();
 
     // Open a PTY so Claude's isatty() returns true → interactive mode → PreToolUse hooks fire.
     // With --output-format stream-json, output is machine-readable JSON even in TTY mode.

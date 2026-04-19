@@ -11,6 +11,8 @@ import {
   View,
 } from 'react-native';
 
+import { DEFAULT_WHISPER_ENDPOINT, STT_ENGINE_KEY, WHISPER_API_KEY_STORAGE, WHISPER_ENDPOINT_KEY } from '../components/VoiceButton';
+
 const TS_API_KEY_STORAGE = 'tailscale_api_key';
 
 interface NotifyConfig {
@@ -29,11 +31,18 @@ export function SettingsScreen({ visible, onClose, notifyConfig, onRequestNotify
   const [copied, setCopied] = useState(false);
   const [tsApiKey, setTsApiKey] = useState('');
   const [tsKeySaved, setTsKeySaved] = useState(false);
+  const [sttEngine, setSttEngine] = useState<'ondevice' | 'whisper'>('ondevice');
+  const [whisperApiKey, setWhisperApiKey] = useState('');
+  const [whisperEndpoint, setWhisperEndpoint] = useState('');
+  const [whisperSaved, setWhisperSaved] = useState(false);
 
   useEffect(() => {
     if (visible) {
       onRequestNotifyConfig();
       AsyncStorage.getItem(TS_API_KEY_STORAGE).then((k: string | null) => { if (k) setTsApiKey(k); });
+      AsyncStorage.getItem(STT_ENGINE_KEY).then(v => setSttEngine((v as 'ondevice' | 'whisper') ?? 'ondevice'));
+      AsyncStorage.getItem(WHISPER_API_KEY_STORAGE).then(v => { if (v) setWhisperApiKey(v); });
+      AsyncStorage.getItem(WHISPER_ENDPOINT_KEY).then(v => { if (v) setWhisperEndpoint(v); });
     }
   }, [visible, onRequestNotifyConfig]);
 
@@ -41,6 +50,20 @@ export function SettingsScreen({ visible, onClose, notifyConfig, onRequestNotify
     await AsyncStorage.setItem(TS_API_KEY_STORAGE, tsApiKey.trim());
     setTsKeySaved(true);
     setTimeout(() => setTsKeySaved(false), 2000);
+  };
+
+  const handleEngineChange = async (engine: 'ondevice' | 'whisper') => {
+    setSttEngine(engine);
+    await AsyncStorage.setItem(STT_ENGINE_KEY, engine);
+  };
+
+  const saveWhisperSettings = async () => {
+    await Promise.all([
+      AsyncStorage.setItem(WHISPER_API_KEY_STORAGE, whisperApiKey.trim()),
+      AsyncStorage.setItem(WHISPER_ENDPOINT_KEY, whisperEndpoint.trim()),
+    ]);
+    setWhisperSaved(true);
+    setTimeout(() => setWhisperSaved(false), 2000);
   };
 
   const handleCopy = async () => {
@@ -134,6 +157,61 @@ export function SettingsScreen({ visible, onClose, notifyConfig, onRequestNotify
               <Text style={styles.tsKeySaveBtnText}>{tsKeySaved ? 'Saved' : 'Save'}</Text>
             </Pressable>
           </View>
+        </View>
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>Voice Input</Text>
+          <Text style={styles.sectionSubtitle}>
+            On-device uses Android's built-in recognizer. Whisper API sends audio to OpenAI (or a compatible endpoint) for transcription.
+          </Text>
+
+          <View style={styles.enginePicker}>
+            <Pressable
+              style={[styles.engineOption, sttEngine === 'ondevice' && styles.engineOptionActive]}
+              onPress={() => handleEngineChange('ondevice')}
+            >
+              <Text style={[styles.engineOptionText, sttEngine === 'ondevice' && styles.engineOptionTextActive]}>
+                On-device
+              </Text>
+            </Pressable>
+            <Pressable
+              style={[styles.engineOption, sttEngine === 'whisper' && styles.engineOptionActive]}
+              onPress={() => handleEngineChange('whisper')}
+            >
+              <Text style={[styles.engineOptionText, sttEngine === 'whisper' && styles.engineOptionTextActive]}>
+                Whisper API
+              </Text>
+            </Pressable>
+          </View>
+
+          {sttEngine === 'whisper' && (
+            <>
+              <TextInput
+                style={styles.tsKeyInput}
+                value={whisperApiKey}
+                onChangeText={setWhisperApiKey}
+                placeholder="sk-... (OpenAI API key)"
+                placeholderTextColor="#444"
+                autoCapitalize="none"
+                autoCorrect={false}
+                secureTextEntry
+              />
+              <TextInput
+                style={styles.tsKeyInput}
+                value={whisperEndpoint}
+                onChangeText={setWhisperEndpoint}
+                placeholder={DEFAULT_WHISPER_ENDPOINT}
+                placeholderTextColor="#444"
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              <Pressable
+                style={[styles.tsKeySaveBtn, whisperSaved && styles.tsKeySaveBtnDone]}
+                onPress={saveWhisperSettings}
+              >
+                <Text style={styles.tsKeySaveBtnText}>{whisperSaved ? 'Saved ✓' : 'Save'}</Text>
+              </Pressable>
+            </>
+          )}
         </View>
       </View>
     </Modal>
@@ -274,4 +352,30 @@ const styles = StyleSheet.create({
   },
   tsKeySaveBtnDone: { borderColor: '#166534', backgroundColor: '#052e16' },
   tsKeySaveBtnText: { color: '#888', fontSize: 13, fontWeight: '600' },
+  enginePicker: {
+    flexDirection: 'row',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#2a2a2a',
+    overflow: 'hidden',
+  },
+  engineOption: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: 'center',
+    backgroundColor: '#0d0d0d',
+  },
+  engineOptionActive: {
+    backgroundColor: '#1a1a1a',
+    borderBottomWidth: 2,
+    borderBottomColor: '#4ade80',
+  },
+  engineOptionText: {
+    color: '#555',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  engineOptionTextActive: {
+    color: '#f0f0f0',
+  },
 });

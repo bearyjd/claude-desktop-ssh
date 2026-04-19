@@ -30,6 +30,7 @@ pub enum Decision {
 pub struct SessionEntry {
     pub prompt: String,
     pub container: Option<String>,
+    pub command: Option<String>,
     pub started_at: f64,
     /// Fires to kill the session; taken by the kill handler.
     pub kill_tx: Option<oneshot::Sender<()>>,
@@ -41,6 +42,7 @@ pub struct RunRequest {
     pub container: Option<String>,
     pub dangerously_skip_permissions: bool,
     pub work_dir: Option<String>,
+    pub command: Option<String>,
 }
 
 #[tokio::main]
@@ -140,6 +142,7 @@ pub async fn run_session(
         "prompt": &req.prompt,
         "container": req.container,
         "dangerously_skip_permissions": req.dangerously_skip_permissions,
+        "command": req.command,
     }))
     .unwrap_or_default();
     let seq = {
@@ -153,6 +156,7 @@ pub async fn run_session(
         req.container.as_deref(),
         req.dangerously_skip_permissions,
         req.work_dir.as_deref(),
+        req.command.as_deref(),
         &session_id,
         kill_rx,
         db.clone(),
@@ -206,6 +210,7 @@ pub async fn sessions_snapshot(sessions: &Sessions) -> Vec<serde_json::Value> {
                 "session_id": id,
                 "prompt": e.prompt,
                 "container": e.container,
+                "command": e.command,
                 "started_at": e.started_at,
             })
         })

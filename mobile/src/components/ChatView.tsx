@@ -8,6 +8,7 @@ import {
   View,
 } from 'react-native';
 import { ApprovalCard } from './ApprovalCard';
+import { DiffView } from './DiffView';
 import {
   AssistantEvent,
   EventFrame,
@@ -85,6 +86,7 @@ function ToolCallRow({
               <Text selectable style={tcStyles.result}>
                 {resultContent.length > 4000 ? resultContent.slice(0, 4000) + '\n…' : resultContent}
               </Text>
+              <DiffView content={resultContent} />
             </>
           )}
         </View>

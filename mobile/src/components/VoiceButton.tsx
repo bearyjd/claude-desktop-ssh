@@ -1,11 +1,18 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Audio } from 'expo-av';
 import * as Haptics from 'expo-haptics';
 import {
   ExpoSpeechRecognitionModule,
-  type ExpoSpeechRecognitionResultEvent,
   type ExpoSpeechRecognitionErrorEvent,
+  type ExpoSpeechRecognitionResultEvent,
 } from 'expo-speech-recognition';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
+
+export const STT_ENGINE_KEY = 'stt_engine';
+export const WHISPER_API_KEY_STORAGE = 'whisper_api_key';
+export const WHISPER_ENDPOINT_KEY = 'whisper_endpoint';
+export const DEFAULT_WHISPER_ENDPOINT = 'https://api.openai.com/v1/audio/transcriptions';
 
 interface VoiceButtonProps {
   onTranscript: (text: string, isFinal: boolean) => void;
@@ -18,7 +25,7 @@ export function VoiceButton({ onTranscript, disabled }: VoiceButtonProps) {
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const pulseLoop = useRef<Animated.CompositeAnimation | null>(null);
   const started = useRef(false);
-  // Keep latest callbacks in refs to avoid stale closures in listeners
+  const whisperRecording = useRef<Audio.Recording | null>(null);
   const onTranscriptRef = useRef(onTranscript);
   useEffect(() => { onTranscriptRef.current = onTranscript; });
 
@@ -78,15 +85,22 @@ export function VoiceButton({ onTranscript, disabled }: VoiceButtonProps) {
       errorSub.remove();
       endSub.remove();
       if (started.current) ExpoSpeechRecognitionModule.stop();
+      whisperRecording.current?.stopAndUnloadAsync().catch(() => {});
     };
   }, []);
 
-  const startListening = async () => {
+  // ── On-device (Android SpeechRecognizer) ────────────────────────────────────
+
+  const handlePressOnDevice = async () => {
+    if (isListening) {
+      stopListening();
+      return;
+    }
     setErrMsg('');
     const { granted } = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
     if (!granted) {
       setErrMsg('mic denied');
-      setTimeout(() => setErrMsg(''), 3000);
+      setTimeout(() => setErrMsg(''), 4000);
       return;
     }
     try {
@@ -94,23 +108,125 @@ export function VoiceButton({ onTranscript, disabled }: VoiceButtonProps) {
         lang: 'en-US',
         interimResults: true,
         maxAlternatives: 1,
+        continuous: true,
+        requiresOnDeviceRecognition: true,
       });
       started.current = true;
       setIsListening(true);
       startPulse();
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      console.log('[Voice] on-device recognition started');
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
-      setErrMsg(msg.slice(0, 30));
-      setTimeout(() => setErrMsg(''), 3000);
+      console.log('[Voice] start error:', msg);
+      setErrMsg(msg.slice(0, 40));
+      setTimeout(() => setErrMsg(''), 4000);
+    }
+  };
+
+  // ── Whisper API ──────────────────────────────────────────────────────────────
+
+  const handlePressWhisper = async () => {
+    if (isListening) {
+      const rec = whisperRecording.current;
+      if (!rec) { setIsListening(false); stopPulse(); return; }
+      whisperRecording.current = null;
+      started.current = false;
+      setIsListening(false);
+      stopPulse();
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+      try {
+        await rec.stopAndUnloadAsync();
+        const uri = rec.getURI();
+        if (!uri) { setErrMsg('no audio'); setTimeout(() => setErrMsg(''), 3000); return; }
+
+        const [apiKey, endpoint] = await Promise.all([
+          AsyncStorage.getItem(WHISPER_API_KEY_STORAGE),
+          AsyncStorage.getItem(WHISPER_ENDPOINT_KEY),
+        ]);
+        const key = apiKey?.trim() ?? '';
+        const ep = endpoint?.trim() || DEFAULT_WHISPER_ENDPOINT;
+
+        if (!key) {
+          setErrMsg('set Whisper key in Settings');
+          setTimeout(() => setErrMsg(''), 4000);
+          return;
+        }
+
+        setErrMsg('transcribing…');
+        const form = new FormData();
+        form.append('file', { uri, name: 'audio.m4a', type: 'audio/m4a' } as unknown as Blob);
+        form.append('model', 'whisper-1');
+
+        const resp = await fetch(ep, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${key}` },
+          body: form,
+        });
+        setErrMsg('');
+
+        if (!resp.ok) {
+          const txt = await resp.text().catch(() => resp.statusText);
+          setErrMsg(txt.slice(0, 40));
+          setTimeout(() => setErrMsg(''), 4000);
+          return;
+        }
+
+        const data = await resp.json() as { text?: string };
+        const text = data.text?.trim();
+        if (text) onTranscriptRef.current(text, true);
+      } catch (e: unknown) {
+        setErrMsg('');
+        const msg = e instanceof Error ? e.message : String(e);
+        setErrMsg(msg.slice(0, 40));
+        setTimeout(() => setErrMsg(''), 4000);
+      }
+      return;
+    }
+
+    // Start recording
+    setErrMsg('');
+    try {
+      const { granted } = await Audio.requestPermissionsAsync();
+      if (!granted) {
+        setErrMsg('mic denied');
+        setTimeout(() => setErrMsg(''), 4000);
+        return;
+      }
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+      const { recording } = await Audio.Recording.createAsync(
+        Audio.RecordingOptionsPresets.HIGH_QUALITY,
+      );
+      whisperRecording.current = recording;
+      started.current = true;
+      setIsListening(true);
+      startPulse();
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      console.log('[Voice] whisper recording started');
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.log('[Voice] whisper start error:', msg);
+      setErrMsg(msg.slice(0, 40));
+      setTimeout(() => setErrMsg(''), 4000);
+    }
+  };
+
+  // ── Router ───────────────────────────────────────────────────────────────────
+
+  const handlePress = async () => {
+    const engine = await AsyncStorage.getItem(STT_ENGINE_KEY);
+    if (engine === 'whisper') {
+      await handlePressWhisper();
+    } else {
+      await handlePressOnDevice();
     }
   };
 
   return (
     <View>
       <Pressable
-        onPressIn={startListening}
-        onPressOut={stopListening}
+        onPress={handlePress}
         disabled={disabled}
         style={({ pressed }: { pressed: boolean }) => [
           styles.btn,

@@ -210,6 +210,11 @@ async fn handle_ws(
                                         .and_then(|v| v.as_str())
                                         .filter(|s| !s.is_empty())
                                         .map(|s| s.to_string());
+                                    let command = v
+                                        .get("command")
+                                        .and_then(|v| v.as_str())
+                                        .filter(|s| !s.is_empty())
+                                        .map(|s| s.to_string());
 
                                     let session_id = new_session_id();
                                     let (kill_tx, kill_rx) = oneshot::channel::<()>();
@@ -217,6 +222,7 @@ async fn handle_ws(
                                     sessions.lock().await.insert(session_id.clone(), crate::SessionEntry {
                                         prompt: prompt.to_string(),
                                         container: container.clone(),
+                                        command: command.clone(),
                                         started_at: unix_ts(),
                                         kill_tx: Some(kill_tx),
                                     });
@@ -227,6 +233,7 @@ async fn handle_ws(
                                         container,
                                         dangerously_skip_permissions,
                                         work_dir,
+                                        command,
                                     };
                                     tokio::spawn(crate::run_session(
                                         session_id.clone(),

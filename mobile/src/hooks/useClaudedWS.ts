@@ -25,7 +25,7 @@ interface UseClaudedWSResult {
   connect: (config: ServerConfig) => void;
   disconnect: () => void;
   decide: (tool_use_id: string, allow: boolean) => void;
-  run: (prompt: string, container?: string, dangerouslySkipPermissions?: boolean, workDir?: string) => void;
+  run: (prompt: string, container?: string, dangerouslySkipPermissions?: boolean, workDir?: string, command?: string) => void;
   kill: (sessionId?: string) => void;
   getNotifyConfig: () => void;
   listDir: (path: string, cb: (ev: DirListingEvent) => void) => void;
@@ -70,7 +70,7 @@ export function useClaudedWS(): UseClaudedWSResult {
     );
   }, []);
 
-  const run = useCallback((prompt: string, container?: string, dangerouslySkipPermissions?: boolean, workDir?: string) => {
+  const run = useCallback((prompt: string, container?: string, dangerouslySkipPermissions?: boolean, workDir?: string, command?: string) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({
         type: 'run',
@@ -78,6 +78,7 @@ export function useClaudedWS(): UseClaudedWSResult {
         container: container || null,
         dangerously_skip_permissions: dangerouslySkipPermissions ?? false,
         work_dir: workDir || null,
+        command: command || null,
       }));
     }
   }, []);
@@ -274,6 +275,11 @@ export function useClaudedWS(): UseClaudedWSResult {
           topic: (msg['topic'] as string) ?? '',
           base_url: (msg['base_url'] as string) ?? '',
         });
+        return;
+      }
+
+      if (msgType === 'dir_listing') {
+        dirListingCallbackRef.current?.(msg as unknown as DirListingEvent);
         return;
       }
 

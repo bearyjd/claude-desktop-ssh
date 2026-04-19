@@ -3,11 +3,13 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import React, { useEffect, useRef, useState } from 'react';
 import { AppState, AppStateStatus, StyleSheet } from 'react-native';
+
 import { ConnectScreen } from './src/screens/ConnectScreen';
 import { LockScreen } from './src/screens/LockScreen';
 import { MainScreen } from './src/screens/MainScreen';
 import { useClaudedWS } from './src/hooks/useClaudedWS';
 import { ServerConfig } from './src/types';
+
 
 const LAST_CONFIG_KEY = 'clauded_last_config';
 
