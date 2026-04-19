@@ -114,7 +114,7 @@ export function VoiceButton({ onTranscript, disabled }: VoiceButtonProps) {
           { transform: [{ scale: pulseAnim }] },
         ]} />
         <Text style={[styles.icon, isListening && styles.iconActive]}>
-          {isListening ? '⏹' : '🎤'}
+          {isListening ? '⏹' : '⏺'}
         </Text>
       </Pressable>
       {errMsg.length > 0 && <Text style={styles.err}>{errMsg}</Text>}
@@ -145,7 +145,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   rippleActive: { backgroundColor: 'rgba(218, 119, 86, 0.15)' },
-  icon: { fontSize: 26 },
-  iconActive: {},
+  icon: { fontSize: 26, color: '#C4A882' },
+  iconActive: { color: '#DA7756' },
   err: { color: '#DA7756', fontSize: 10, textAlign: 'center', marginTop: 2 },
 });
