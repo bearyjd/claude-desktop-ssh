@@ -1,7 +1,6 @@
 import * as Haptics from 'expo-haptics';
 import {
   ExpoSpeechRecognitionModule,
-  useSpeechRecognitionEvent,
   type ExpoSpeechRecognitionResultEvent,
   type ExpoSpeechRecognitionErrorEvent,
 } from 'expo-speech-recognition';
@@ -19,6 +18,9 @@ export function VoiceButton({ onTranscript, disabled }: VoiceButtonProps) {
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const pulseLoop = useRef<Animated.CompositeAnimation | null>(null);
   const started = useRef(false);
+  // Keep latest callbacks in refs to avoid stale closures in listeners
+  const onTranscriptRef = useRef(onTranscript);
+  useEffect(() => { onTranscriptRef.current = onTranscript; });
 
   const startPulse = () => {
     pulseAnim.setValue(1);
@@ -36,7 +38,7 @@ export function VoiceButton({ onTranscript, disabled }: VoiceButtonProps) {
     pulseAnim.setValue(1);
   };
 
-  const stopListening = useCallback(async () => {
+  const stopListening = useCallback(() => {
     if (!started.current) return;
     started.current = false;
     try { ExpoSpeechRecognitionModule.stop(); } catch {}
@@ -47,24 +49,34 @@ export function VoiceButton({ onTranscript, disabled }: VoiceButtonProps) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useSpeechRecognitionEvent('result', (event: ExpoSpeechRecognitionResultEvent) => {
-    const transcript = event.results[0]?.transcript;
-    if (transcript) onTranscript(transcript, event.isFinal);
-    if (event.isFinal) stopListening();
-  });
-
-  useSpeechRecognitionEvent('error', (event: ExpoSpeechRecognitionErrorEvent) => {
-    setErrMsg(event.error);
-    setTimeout(() => setErrMsg(''), 3000);
-    stopListening();
-  });
-
-  useSpeechRecognitionEvent('end', () => {
-    stopListening();
-  });
+  const stopListeningRef = useRef(stopListening);
+  useEffect(() => { stopListeningRef.current = stopListening; });
 
   useEffect(() => {
+    const resultSub = ExpoSpeechRecognitionModule.addListener(
+      'result',
+      (event: ExpoSpeechRecognitionResultEvent) => {
+        const transcript = event.results[0]?.transcript;
+        if (transcript) onTranscriptRef.current(transcript, event.isFinal);
+        if (event.isFinal) stopListeningRef.current();
+      }
+    );
+    const errorSub = ExpoSpeechRecognitionModule.addListener(
+      'error',
+      (event: ExpoSpeechRecognitionErrorEvent) => {
+        setErrMsg(event.error);
+        setTimeout(() => setErrMsg(''), 3000);
+        stopListeningRef.current();
+      }
+    );
+    const endSub = ExpoSpeechRecognitionModule.addListener('end', () => {
+      stopListeningRef.current();
+    });
+
     return () => {
+      resultSub.remove();
+      errorSub.remove();
+      endSub.remove();
       if (started.current) ExpoSpeechRecognitionModule.stop();
     };
   }, []);
