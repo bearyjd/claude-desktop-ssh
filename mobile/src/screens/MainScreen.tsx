@@ -30,6 +30,8 @@ interface MainScreenProps {
   viewStartSeq: number;
   defaultContainer?: string;
   notifyConfig: NotifyConfig | null;
+  reconnecting: boolean;
+  reconnectCount: number;
   onDecide: (tool_use_id: string, allow: boolean) => void;
   onDisconnect: () => void;
   onRun: (prompt: string, container?: string, dangerouslySkipPermissions?: boolean, workDir?: string, command?: string) => void;
@@ -75,6 +77,8 @@ export function MainScreen({
   viewStartSeq,
   defaultContainer,
   notifyConfig,
+  reconnecting,
+  reconnectCount,
   onDecide,
   onDisconnect,
   onRun,
@@ -106,8 +110,11 @@ export function MainScreen({
   const [skipPermsConfirming, setSkipPermsConfirming] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [logExpanded, setLogExpanded] = useState(false);
+  const [reconnectedFlash, setReconnectedFlash] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reconnectedFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevReconnectingRef = useRef(false);
 
   useEffect(() => {
     if (sessionStatus === 'running') {
@@ -127,6 +134,19 @@ export function MainScreen({
       }
     }
   }, [sessionStatus]);
+
+  // Flash "Reconnected" briefly when reconnecting transitions from true→false (i.e. just reconnected)
+  useEffect(() => {
+    if (prevReconnectingRef.current && !reconnecting && status === 'connected' && reconnectCount > 0) {
+      setReconnectedFlash(true);
+      if (reconnectedFlashTimerRef.current !== null) clearTimeout(reconnectedFlashTimerRef.current);
+      reconnectedFlashTimerRef.current = setTimeout(() => {
+        setReconnectedFlash(false);
+        reconnectedFlashTimerRef.current = null;
+      }, 2000);
+    }
+    prevReconnectingRef.current = reconnecting;
+  }, [reconnecting, status, reconnectCount]);
 
   const handleSkipPermsToggle = () => {
     if (dangerouslySkipPermissions) {
@@ -199,6 +219,17 @@ export function MainScreen({
           <View style={[styles.dot, { backgroundColor: STATUS_COLOR[status] }]} />
           <Text style={styles.statusText}>{status}</Text>
           {lastSeq > 0 && <Text style={styles.seqBadge}>seq {lastSeq}</Text>}
+          {reconnecting && (
+            <View style={styles.reconnectBadge}>
+              <View style={styles.reconnectDot} />
+              <Text style={styles.reconnectText}>Reconnecting…</Text>
+            </View>
+          )}
+          {reconnectedFlash && !reconnecting && (
+            <View style={styles.reconnectedBadge}>
+              <Text style={styles.reconnectedText}>Reconnected</Text>
+            </View>
+          )}
           {isRunning && (
             <View style={styles.sessionBadge}>
               <Text style={styles.sessionBadgeText}>running · {formatElapsed(elapsed)}</Text>
@@ -415,6 +446,28 @@ const styles = StyleSheet.create({
     borderColor: '#1f4a18',
   },
   sessionBadgeText: { color: '#4ade80', fontSize: 11, fontWeight: '600', letterSpacing: 0.3 },
+  reconnectBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#1c1500',
+    borderRadius: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderWidth: 1,
+    borderColor: '#3a2e00',
+  },
+  reconnectDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#fbbf24' },
+  reconnectText: { color: '#fbbf24', fontSize: 11, fontWeight: '600' },
+  reconnectedBadge: {
+    backgroundColor: '#0f2818',
+    borderRadius: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderWidth: 1,
+    borderColor: '#1f4a18',
+  },
+  reconnectedText: { color: '#4ade80', fontSize: 11, fontWeight: '600' },
   topBarActions: {
     flexDirection: 'row',
     alignItems: 'center',

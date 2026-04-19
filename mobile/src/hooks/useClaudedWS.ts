@@ -31,6 +31,8 @@ interface UseClaudedWSResult {
   pastSessions: PastSessionInfo[];
   sessionHistory: Record<string, EventFrame[]>;
   scheduledSessions: ScheduledSessionInfo[];
+  reconnecting: boolean;
+  reconnectCount: number;
   connect: (config: ServerConfig) => void;
   disconnect: () => void;
   decide: (tool_use_id: string, allow: boolean) => void;
@@ -60,12 +62,18 @@ export function useClaudedWS(): UseClaudedWSResult {
   const [pastSessions, setPastSessions] = useState<PastSessionInfo[]>([]);
   const [sessionHistory, setSessionHistory] = useState<Record<string, EventFrame[]>>({});
   const [scheduledSessions, setScheduledSessions] = useState<ScheduledSessionInfo[]>([]);
+  const [reconnecting, setReconnecting] = useState(false);
+  const [reconnectCount, setReconnectCount] = useState(0);
 
   const wsRef = useRef<WebSocket | null>(null);
   const lastSeqRef = useRef(0);
   const storedSinceRef = useRef(0);
   const resolvedToolIds = useRef<Set<string>>(new Set<string>());
   const dirListingCallbackRef = useRef<((ev: DirListingEvent) => void) | null>(null);
+  const shouldReconnectRef = useRef(false);
+  const reconnectDelayRef = useRef(1000);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const serverConfigRef = useRef<ServerConfig | null>(null);
 
   // Derived: is any session running?
   const sessionStatus: SessionStatus = sessions.length > 0 ? 'running' : 'idle';
@@ -172,6 +180,12 @@ export function useClaudedWS(): UseClaudedWSResult {
   }, []);
 
   const disconnect = useCallback(() => {
+    shouldReconnectRef.current = false;
+    if (reconnectTimerRef.current !== null) {
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
+    setReconnecting(false);
     AsyncStorage.setItem(LAST_SEQ_KEY, String(lastSeqRef.current));
     wsRef.current?.close();
     wsRef.current = null;
@@ -284,11 +298,10 @@ export function useClaudedWS(): UseClaudedWSResult {
     }
   }, []);
 
-  const connect = useCallback((config: ServerConfig) => {
+  const connectWS = useCallback((config: ServerConfig, sinceSeq: number) => {
     wsRef.current?.close();
     setStatus('connecting');
 
-    const since = storedSinceRef.current;
     const url = `ws://${config.host}:${config.port}`;
     const ws = new WebSocket(url);
     wsRef.current = ws;
@@ -311,7 +324,7 @@ export function useClaudedWS(): UseClaudedWSResult {
       if (msgType === 'welcome') {
         const serverSessions = (msg['sessions'] as SessionInfo[] | undefined) ?? [];
         const serverHeadSeq = msg['head_seq'] as number | undefined;
-        const effectiveSince = (serverHeadSeq !== undefined && since > serverHeadSeq) ? 0 : since;
+        const effectiveSince = (serverHeadSeq !== undefined && sinceSeq > serverHeadSeq) ? 0 : sinceSeq;
 
         setSessions(serverSessions);
         if (serverSessions.length > 0) {
@@ -321,24 +334,31 @@ export function useClaudedWS(): UseClaudedWSResult {
         }
         setStatus('connecting');
 
-        setEvents([]);
-        setPendingApprovals([]);
-        lastSeqRef.current = 0;
-        setLastSeq(0);
+        // Only reset event history on a fresh connect (sinceSeq === 0), not on reconnect
+        if (sinceSeq === 0) {
+          setEvents([]);
+          setPendingApprovals([]);
+          lastSeqRef.current = 0;
+          setLastSeq(0);
+          resolvedToolIds.current = new Set<string>();
+        }
         setViewStartSeq(serverHeadSeq ?? 0);
-        resolvedToolIds.current = new Set<string>();
 
         ws.send(JSON.stringify({ type: 'attach', since: effectiveSince }));
         return;
       }
 
       if (msgType === 'rejected') {
+        shouldReconnectRef.current = false;
         setStatus('error');
         ws.close();
         return;
       }
 
       if (msgType === 'caught-up') {
+        // Reset backoff on successful connection
+        reconnectDelayRef.current = 1000;
+        setReconnecting(false);
         setStatus('connected');
         AsyncStorage.setItem(LAST_SEQ_KEY, String(lastSeqRef.current));
         if (sessions.length === 0) {
@@ -422,8 +442,8 @@ export function useClaudedWS(): UseClaudedWSResult {
       if ('seq' in msg && 'event' in msg) {
         const frame = msg as unknown as EventFrame;
         const seq = frame.seq;
-        lastSeqRef.current = seq;
-        setLastSeq(seq);
+        lastSeqRef.current = Math.max(lastSeqRef.current, seq);
+        setLastSeq(lastSeqRef.current);
 
         setEvents((prev: EventFrame[]) => {
           if (prev.some((e: EventFrame) => e.seq === seq)) return prev;
@@ -441,8 +461,30 @@ export function useClaudedWS(): UseClaudedWSResult {
       setSessions([]);
       setActiveSessionId(null);
       setPendingApprovals([]);
+
+      if (!shouldReconnectRef.current || serverConfigRef.current === null) return;
+
+      // Schedule reconnect with exponential backoff
+      setReconnecting(true);
+      const delay = reconnectDelayRef.current;
+      reconnectDelayRef.current = Math.min(reconnectDelayRef.current * 2, 30000);
+      reconnectTimerRef.current = setTimeout(() => {
+        reconnectTimerRef.current = null;
+        if (!shouldReconnectRef.current || serverConfigRef.current === null) return;
+        setReconnectCount(c => c + 1);
+        connectWS(serverConfigRef.current, lastSeqRef.current);
+      }, delay);
     };
   }, [processEvent, sessions.length]);
+
+  const connect = useCallback((config: ServerConfig) => {
+    serverConfigRef.current = config;
+    shouldReconnectRef.current = true;
+    reconnectDelayRef.current = 1000;
+    setReconnectCount(0);
+    setReconnecting(false);
+    connectWS(config, storedSinceRef.current);
+  }, [connectWS]);
 
   useEffect(() => () => { wsRef.current?.close(); }, []);
 
@@ -461,6 +503,8 @@ export function useClaudedWS(): UseClaudedWSResult {
     pastSessions,
     sessionHistory,
     scheduledSessions,
+    reconnecting,
+    reconnectCount,
     connect,
     disconnect,
     decide,
