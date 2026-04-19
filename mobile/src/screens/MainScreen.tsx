@@ -36,6 +36,7 @@ interface MainScreenProps {
   onDisconnect: () => void;
   onRun: (prompt: string, container?: string, dangerouslySkipPermissions?: boolean, workDir?: string, command?: string) => void;
   onKill: (sessionId?: string) => void;
+  onSendInput: (text: string) => void;
   onRequestNotifyConfig: () => void;
   listDir: (path: string, cb: (ev: DirListingEvent) => void) => void;
   skills: SkillInfo[];
@@ -83,6 +84,7 @@ export function MainScreen({
   onDisconnect,
   onRun,
   onKill,
+  onSendInput,
   onRequestNotifyConfig,
   listDir,
   skills,
@@ -103,8 +105,10 @@ export function MainScreen({
   const [isVoiceInterim, setIsVoiceInterim] = useState(false);
   const [container, setContainer] = useState(defaultContainer ?? '');
   const [workDir, setWorkDir] = useState('');
+  const [customCommand, setCustomCommand] = useState('');
   const [selectedAgent, setSelectedAgent] = useState<AgentName>('claude');
   const [dirPickerOpen, setDirPickerOpen] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [dangerouslySkipPermissions, setDangerouslySkipPermissions] = useState(false);
   const [skipPermsConfirming, setSkipPermsConfirming] = useState(false);
@@ -180,7 +184,7 @@ export function MainScreen({
   const handleRun = () => {
     const p = prompt.trim();
     if (!p) return;
-    const agentCommand = selectedAgent !== 'claude' ? selectedAgent : undefined;
+    const agentCommand = customCommand.trim() || (selectedAgent !== 'claude' ? selectedAgent : undefined);
     onRun(p, container.trim() || undefined, dangerouslySkipPermissions, workDir.trim() || undefined, agentCommand);
     setPrompt('');
     setIsVoiceInterim(false);
@@ -203,6 +207,7 @@ export function MainScreen({
         onRequestNotifyConfig={onRequestNotifyConfig}
         skills={skills}
         onListSkills={onListSkills}
+        onRunSkill={(prompt) => { onRun(prompt); setSettingsVisible(false); }}
         pastSessions={pastSessions}
         sessionHistory={sessionHistory}
         onListPastSessions={onListPastSessions}
@@ -303,6 +308,8 @@ export function MainScreen({
         onDecide={onDecide}
         viewStartSeq={viewStartSeq}
         activeSessionId={activeSessionId}
+        sessionRunning={isRunning}
+        onSendInput={isRunning && activeSessionId ? onSendInput : undefined}
       />
 
       {/* New session input (only when idle) */}
@@ -352,39 +359,67 @@ export function MainScreen({
             ))}
           </ScrollView>
 
-          <Pressable onPress={() => setDirPickerOpen(true)} style={styles.dirBtn}>
-            <Text style={styles.dirBtnText} numberOfLines={1}>
-              {workDir || '📁 Choose project directory'}
-            </Text>
+          {/* Advanced options — collapsed by default */}
+          <Pressable style={styles.advancedHeader} onPress={() => setAdvancedOpen(o => !o)}>
+            <Text style={styles.advancedHeaderText}>Advanced {advancedOpen ? '▴' : '▾'}</Text>
           </Pressable>
+
+          {advancedOpen && (
+            <View style={styles.advancedBody}>
+              {/* Work directory */}
+              <Pressable onPress={() => setDirPickerOpen(true)} style={styles.dirBtn}>
+                <Text style={styles.dirBtnText} numberOfLines={1}>
+                  {workDir || '📁 Work directory (optional)'}
+                </Text>
+              </Pressable>
+
+              {/* Custom command override */}
+              <TextInput
+                style={[styles.input, styles.advancedInput]}
+                value={customCommand}
+                onChangeText={setCustomCommand}
+                placeholder="Custom command (overrides agent picker)"
+                placeholderTextColor="#6b7280"
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+
+              {/* Skip permissions toggle */}
+              <Pressable
+                style={[
+                  styles.skipPermsToggle,
+                  skipPermsConfirming && styles.skipPermsToggleConfirming,
+                  dangerouslySkipPermissions && styles.skipPermsToggleOn,
+                ]}
+                onPress={handleSkipPermsToggle}
+              >
+                <View style={[styles.skipPermsIndicator, dangerouslySkipPermissions && styles.skipPermsIndicatorOn]} />
+                <View style={styles.skipPermsLabelCol}>
+                  <Text style={[
+                    styles.skipPermsText,
+                    skipPermsConfirming && styles.skipPermsTextConfirming,
+                    dangerouslySkipPermissions && styles.skipPermsTextOn,
+                  ]}>
+                    {dangerouslySkipPermissions
+                      ? '⚡ dangerously-skip-permissions ON'
+                      : skipPermsConfirming
+                      ? '⚠ Tap again to enable'
+                      : 'Dangerous: skip all approvals'}
+                  </Text>
+                  {dangerouslySkipPermissions && (
+                    <Text style={styles.skipPermsWarning}>Auto-approves every tool use</Text>
+                  )}
+                </View>
+              </Pressable>
+            </View>
+          )}
+
           <DirPicker
             visible={dirPickerOpen}
             onClose={() => setDirPickerOpen(false)}
             onSelect={setWorkDir}
             listDir={listDir}
           />
-
-          <Pressable
-            style={[
-              styles.skipPermsToggle,
-              skipPermsConfirming && styles.skipPermsToggleConfirming,
-              dangerouslySkipPermissions && styles.skipPermsToggleOn,
-            ]}
-            onPress={handleSkipPermsToggle}
-          >
-            <View style={[styles.skipPermsIndicator, dangerouslySkipPermissions && styles.skipPermsIndicatorOn]} />
-            <Text style={[
-              styles.skipPermsText,
-              skipPermsConfirming && styles.skipPermsTextConfirming,
-              dangerouslySkipPermissions && styles.skipPermsTextOn,
-            ]}>
-              {dangerouslySkipPermissions
-                ? '⚡ dangerously-skip-permissions ON'
-                : skipPermsConfirming
-                ? '⚠ Tap again to enable'
-                : 'dangerously-skip-permissions off'}
-            </Text>
-          </Pressable>
         </View>
       )}
 
@@ -554,6 +589,25 @@ const styles = StyleSheet.create({
   skipPermsTextOn: { color: '#f87171', fontWeight: '700' },
   skipPermsToggleConfirming: { borderColor: '#78350f', backgroundColor: '#1c110a' },
   skipPermsTextConfirming: { color: '#fbbf24', fontWeight: '600' },
+  skipPermsLabelCol: { flex: 1 },
+  skipPermsWarning: { color: '#ef4444', fontSize: 10, marginTop: 2 },
+
+  advancedHeader: {
+    paddingVertical: 6,
+    paddingHorizontal: 2,
+  },
+  advancedHeaderText: {
+    color: '#52525b',
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 0.3,
+  },
+  advancedBody: {
+    gap: 8,
+  },
+  advancedInput: {
+    fontSize: 13,
+  },
 
   dashboardRow: {
     borderBottomWidth: 1,

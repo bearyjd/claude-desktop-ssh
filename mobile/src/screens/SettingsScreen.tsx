@@ -11,7 +11,7 @@ import {
   View,
 } from 'react-native';
 
-import { DEFAULT_WHISPER_ENDPOINT, STT_ENGINE_KEY, WHISPER_API_KEY_STORAGE, WHISPER_ENDPOINT_KEY } from '../components/VoiceButton';
+import { DEFAULT_WHISPER_ENDPOINT, STT_ENGINE_KEY, STT_RECOGNIZER_LABEL_KEY, STT_RECOGNIZER_PKG_KEY, WHISPER_API_KEY_STORAGE, WHISPER_ENDPOINT_KEY } from '../components/VoiceButton';
 import { ScheduleScreen } from './ScheduleScreen';
 import { SessionHistoryScreen } from './SessionHistoryScreen';
 import { SkillsScreen } from './SkillsScreen';
@@ -32,6 +32,7 @@ interface SettingsScreenProps {
   onRequestNotifyConfig: () => void;
   skills: SkillInfo[];
   onListSkills: () => void;
+  onRunSkill: (prompt: string) => void;
   pastSessions: PastSessionInfo[];
   sessionHistory: Record<string, EventFrame[]>;
   onListPastSessions: () => void;
@@ -42,11 +43,12 @@ interface SettingsScreenProps {
   onListScheduledSessions: () => void;
 }
 
-export function SettingsScreen({ visible, onClose, notifyConfig, onRequestNotifyConfig, skills, onListSkills, pastSessions, sessionHistory, onListPastSessions, onGetSessionHistory, scheduledSessions, onScheduleSession, onCancelScheduledSession, onListScheduledSessions }: SettingsScreenProps) {
+export function SettingsScreen({ visible, onClose, notifyConfig, onRequestNotifyConfig, skills, onListSkills, onRunSkill, pastSessions, sessionHistory, onListPastSessions, onGetSessionHistory, scheduledSessions, onScheduleSession, onCancelScheduledSession, onListScheduledSessions }: SettingsScreenProps) {
   const [copied, setCopied] = useState(false);
   const [tsApiKey, setTsApiKey] = useState('');
   const [tsKeySaved, setTsKeySaved] = useState(false);
   const [sttEngine, setSttEngine] = useState<'ondevice' | 'whisper'>('ondevice');
+  const [recognizerLabel, setRecognizerLabel] = useState<string | null>(null);
   const [whisperApiKey, setWhisperApiKey] = useState('');
   const [whisperEndpoint, setWhisperEndpoint] = useState('');
   const [whisperSaved, setWhisperSaved] = useState(false);
@@ -59,6 +61,7 @@ export function SettingsScreen({ visible, onClose, notifyConfig, onRequestNotify
       onRequestNotifyConfig();
       AsyncStorage.getItem(TS_API_KEY_STORAGE).then((k: string | null) => { if (k) setTsApiKey(k); });
       AsyncStorage.getItem(STT_ENGINE_KEY).then(v => setSttEngine((v as 'ondevice' | 'whisper') ?? 'ondevice'));
+      AsyncStorage.getItem(STT_RECOGNIZER_LABEL_KEY).then(v => setRecognizerLabel(v));
       AsyncStorage.getItem(WHISPER_API_KEY_STORAGE).then(v => { if (v) setWhisperApiKey(v); });
       AsyncStorage.getItem(WHISPER_ENDPOINT_KEY).then(v => { if (v) setWhisperEndpoint(v); });
     }
@@ -73,6 +76,14 @@ export function SettingsScreen({ visible, onClose, notifyConfig, onRequestNotify
   const handleEngineChange = async (engine: 'ondevice' | 'whisper') => {
     setSttEngine(engine);
     await AsyncStorage.setItem(STT_ENGINE_KEY, engine);
+  };
+
+  const resetRecognizer = async () => {
+    await Promise.all([
+      AsyncStorage.removeItem(STT_RECOGNIZER_PKG_KEY),
+      AsyncStorage.removeItem(STT_RECOGNIZER_LABEL_KEY),
+    ]);
+    setRecognizerLabel(null);
   };
 
   const saveWhisperSettings = async () => {
@@ -118,6 +129,7 @@ export function SettingsScreen({ visible, onClose, notifyConfig, onRequestNotify
         onClose={() => setSkillsVisible(false)}
         skills={skills}
         onRefresh={onListSkills}
+        onRun={onRunSkill}
       />
       <ScheduleScreen
         visible={scheduleVisible}
@@ -256,6 +268,22 @@ export function SettingsScreen({ visible, onClose, notifyConfig, onRequestNotify
               </Text>
             </Pressable>
           </View>
+
+          {sttEngine === 'ondevice' && (
+            <View style={styles.recognizerRow}>
+              <View style={styles.recognizerInfo}>
+                <Text style={styles.recognizerLabel}>Recognizer</Text>
+                <Text style={styles.recognizerValue}>
+                  {recognizerLabel ?? 'Auto-detect on next tap'}
+                </Text>
+              </View>
+              {recognizerLabel && (
+                <Pressable style={styles.resetBtn} onPress={resetRecognizer}>
+                  <Text style={styles.resetBtnText}>Reset</Text>
+                </Pressable>
+              )}
+            </View>
+          )}
 
           {sttEngine === 'whisper' && (
             <>
@@ -493,5 +521,41 @@ const styles = StyleSheet.create({
   },
   engineOptionTextActive: {
     color: '#f0f0f0',
+  },
+  recognizerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#0d0d0d',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#2a2a2a',
+    padding: 12,
+  },
+  recognizerInfo: { flex: 1 },
+  recognizerLabel: {
+    color: '#444',
+    fontSize: 10,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 3,
+  },
+  recognizerValue: {
+    color: '#f0f0f0',
+    fontSize: 13,
+  },
+  resetBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#3a1a1a',
+    backgroundColor: '#1a0a0a',
+  },
+  resetBtnText: {
+    color: '#DA7756',
+    fontSize: 12,
+    fontWeight: '600',
   },
 });

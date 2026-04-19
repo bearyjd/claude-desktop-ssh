@@ -5,6 +5,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { ApprovalCard } from './ApprovalCard';
@@ -23,6 +24,8 @@ interface ChatViewProps {
   onDecide: (tool_use_id: string, allow: boolean) => void;
   viewStartSeq: number;
   activeSessionId?: string | null;
+  sessionRunning?: boolean;
+  onSendInput?: (text: string) => void;
 }
 
 function buildResultMap(events: EventFrame[]): Map<string, string> {
@@ -145,9 +148,10 @@ const tcStyles = StyleSheet.create({
   },
 });
 
-export function ChatView({ events, pendingApprovals, onDecide, viewStartSeq, activeSessionId }: ChatViewProps) {
+export function ChatView({ events, pendingApprovals, onDecide, viewStartSeq, activeSessionId, sessionRunning, onSendInput }: ChatViewProps) {
   const scrollRef = useRef<ScrollView>(null);
   const [showHistory, setShowHistory] = useState(false);
+  const [inputText, setInputText] = useState('');
 
   useEffect(() => { setShowHistory(false); }, [viewStartSeq]);
 
@@ -233,49 +237,127 @@ export function ChatView({ events, pendingApprovals, onDecide, viewStartSeq, act
   }
 
   const hasHistory = sessionEvents.some(f => f.seq <= viewStartSeq);
+  const hasPendingApprovals = pendingApprovals.length > 0;
+  const showInputBar = sessionRunning && !!activeSessionId && !!onSendInput;
+
+  const handleSendInput = () => {
+    const text = inputText.trim();
+    if (!text || !onSendInput) return;
+    onSendInput(text);
+    setInputText('');
+  };
+
+  const inputBar = showInputBar ? (
+    <View style={styles.inputBar}>
+      <TextInput
+        style={[styles.inputField, hasPendingApprovals && styles.inputFieldDisabled]}
+        value={inputText}
+        onChangeText={setInputText}
+        placeholder="Type a message…"
+        placeholderTextColor="#52525b"
+        autoCorrect={false}
+        editable={!hasPendingApprovals}
+        returnKeyType="send"
+        onSubmitEditing={handleSendInput}
+        blurOnSubmit={false}
+      />
+      <Pressable
+        style={[styles.sendBtn, (!inputText.trim() || hasPendingApprovals) && styles.sendBtnDisabled]}
+        onPress={handleSendInput}
+        disabled={!inputText.trim() || hasPendingApprovals}
+      >
+        <Text style={styles.sendBtnText}>Send</Text>
+      </Pressable>
+    </View>
+  ) : null;
 
   if (items.length === 0 && !hasHistory) {
     return (
-      <View style={styles.empty}>
-        <Text style={styles.emptyText}>No conversation yet</Text>
+      <View style={styles.emptyWrapper}>
+        <View style={styles.empty}>
+          <Text style={styles.emptyText}>No conversation yet</Text>
+        </View>
+        {inputBar}
       </View>
     );
   }
 
   if (items.length === 0 && hasHistory) {
     return (
-      <View style={styles.empty}>
-        <Pressable onPress={() => setShowHistory(true)} style={styles.historyToggle}>
-          <Text style={styles.historyToggleText}>▼ Show history</Text>
-        </Pressable>
+      <View style={styles.emptyWrapper}>
+        <View style={styles.empty}>
+          <Pressable onPress={() => setShowHistory(true)} style={styles.historyToggle}>
+            <Text style={styles.historyToggleText}>▼ Show history</Text>
+          </Pressable>
+        </View>
+        {inputBar}
       </View>
     );
   }
 
   return (
-    <ScrollView
-      ref={scrollRef}
-      style={styles.scroll}
-      contentContainerStyle={styles.content}
-      showsVerticalScrollIndicator={false}
-    >
-      {hasHistory && (
-        <Pressable onPress={() => setShowHistory(x => !x)} style={styles.historyToggle}>
-          <Text style={styles.historyToggleText}>
-            {showHistory ? '▲ Hide history' : '▼ Show history'}
-          </Text>
-        </Pressable>
-      )}
-      {items}
-    </ScrollView>
+    <View style={styles.chatWrapper}>
+      <ScrollView
+        ref={scrollRef}
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
+        {hasHistory && (
+          <Pressable onPress={() => setShowHistory(x => !x)} style={styles.historyToggle}>
+            <Text style={styles.historyToggleText}>
+              {showHistory ? '▲ Hide history' : '▼ Show history'}
+            </Text>
+          </Pressable>
+        )}
+        {items}
+      </ScrollView>
+      {inputBar}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  chatWrapper: { flex: 1 },
+  emptyWrapper: { flex: 1 },
   scroll: { flex: 1 },
   content: { padding: 16, paddingBottom: 24, gap: 10 },
   empty: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   emptyText: { color: '#71717a', fontSize: 14 },
+  inputBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#1e1e1e',
+    backgroundColor: '#0a0a0a',
+  },
+  inputField: {
+    flex: 1,
+    backgroundColor: '#0d0d0d',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#2a2a2a',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    color: '#f0f0f0',
+    fontSize: 14,
+  },
+  inputFieldDisabled: {
+    opacity: 0.4,
+  },
+  sendBtn: {
+    backgroundColor: '#1e3a5f',
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderWidth: 1,
+    borderColor: '#2d5a9e',
+  },
+  sendBtnDisabled: { opacity: 0.35 },
+  sendBtnText: { color: '#93c5fd', fontWeight: '700', fontSize: 13 },
   dividerRow: {
     flexDirection: 'row',
     alignItems: 'center',

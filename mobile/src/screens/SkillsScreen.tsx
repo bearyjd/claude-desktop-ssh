@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import {
+  Alert,
   FlatList,
   Modal,
   Pressable,
@@ -14,9 +15,18 @@ interface SkillsScreenProps {
   onClose: () => void;
   skills: SkillInfo[];
   onRefresh: () => void;
+  onRun: (prompt: string) => void;
 }
 
-export function SkillsScreen({ visible, onClose, skills, onRefresh }: SkillsScreenProps) {
+export function SkillsScreen({ visible, onClose, skills, onRefresh, onRun }: SkillsScreenProps) {
+  const handleRun = (skill: SkillInfo) => {
+    try {
+      onRun(`/${skill.name}`);
+      onClose();
+    } catch {
+      Alert.alert('Error', `Failed to launch skill "${skill.name}".`);
+    }
+  };
   useEffect(() => {
     if (visible) {
       onRefresh();
@@ -68,6 +78,13 @@ export function SkillsScreen({ visible, onClose, skills, onRefresh }: SkillsScre
                     <Text style={styles.skillDescriptionEmpty}>No description</Text>
                   )}
                 </View>
+                <Pressable
+                  onPress={() => handleRun(item)}
+                  hitSlop={8}
+                  style={({ pressed }) => [styles.runBtn, pressed && styles.runBtnPressed]}
+                >
+                  <Text style={styles.runBtnText}>Run</Text>
+                </Pressable>
               </View>
             )}
             ItemSeparatorComponent={() => <View style={styles.separator} />}
@@ -170,6 +187,21 @@ const styles = StyleSheet.create({
     color: '#3f3f5f',
     fontSize: 13,
     fontStyle: 'italic',
+  },
+  runBtn: {
+    alignSelf: 'center',
+    backgroundColor: '#4f46e5',
+    borderRadius: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  runBtnPressed: {
+    opacity: 0.7,
+  },
+  runBtnText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
   },
   separator: {
     height: 8,

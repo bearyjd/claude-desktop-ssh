@@ -61,6 +61,7 @@ export interface PendingApproval {
   tool_input: Record<string, unknown>;
   seq: number;
   expires_at?: number;
+  urgent?: boolean;
 }
 
 export interface ApprovalPendingEvent {
@@ -68,6 +69,13 @@ export interface ApprovalPendingEvent {
   tool_use_id: string;
   tool_name: string;
   expires_at: number;
+}
+
+export interface ApprovalWarningEvent {
+  type: 'approval_warning';
+  tool_use_id: string;
+  seconds_remaining: number;
+  session_id?: string;
 }
 
 export interface SessionInfo {

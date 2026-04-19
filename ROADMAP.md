@@ -100,6 +100,22 @@ WebSocket drops on network change (WiFi → cellular, subway tunnels, sleep) wer
 
 ---
 
+## Mobile / Desktop Feature Gaps (audited 2026-04-19)
+
+Features the daemon supports that mobile does not yet expose:
+
+| Gap | Area | Detail |
+|---|---|---|
+| Free-text mid-session input | Mobile UI | Daemon `input` WS handler accepts any text/stdin; mobile only surfaces tool-approval cards — no "type a message" field |
+| `approval_warning` event | Mobile | Daemon emits it; `useClaudedWS` ignores it — ApprovalCard countdown covers most of the UX but the event is silently dropped |
+| Launch a skill | SkillsScreen | Lists `~/.claude/skills/` descriptions but has no "Run" action — no way to invoke a skill from mobile |
+| Custom `work_dir` + `command` override | Session start UI | Both fields are wired in `run()` but there is no input field in the session-start modal |
+| `dangerously_skip_permissions` toggle | Session start UI | Param exists in `run()` but no UI toggle exposes it |
+| Session history detail | SessionHistoryScreen | Replays events but does not render diff blocks or tool-use details — read-only plain text only |
+| ntfy onboarding flow | SettingsScreen | Topic shown, deep-link present, but no in-app subscribe/test-notification flow |
+
+---
+
 ## Backlog
 
 | Feature | Priority | Notes |
@@ -108,6 +124,12 @@ WebSocket drops on network change (WiFi → cellular, subway tunnels, sleep) wer
 | Scheduled / cron sessions | ~~P2~~ **shipped** | ScheduleScreen with quick buttons; 30s daemon polling loop |
 | Session recording + replay | ~~P2~~ **shipped** | SessionHistoryScreen reads past events from SQLite |
 | Installed skills browser | ~~P2~~ **shipped** | SkillsScreen lists ~/.claude/skills/ with descriptions |
+| Mid-session text input | P1 | Wire the daemon `input` handler to a mobile text field; needed for prompt steering without full stop/restart |
+| Skill launcher | P2 | Add "Run" action to SkillsScreen rows; sends `run` with `/skill-name` as prompt |
+| Session start advanced options | P2 | Collapsible panel: work_dir picker (reuse DirPicker), custom command field, dangerously_skip toggle |
+| Session history diff + tool detail | P2 | Render DiffView and tool-use blocks inside SessionHistoryScreen replay |
+| approval_warning UI | P2 | Handle `approval_warning` event in useClaudedWS; flash ApprovalCard border or badge when ≤30s remaining |
+| ntfy in-app onboarding | P3 | Test-notification button + subscribe deep-link flow in SettingsScreen |
 | Telegram notification channel | P3 | ntfy.sh covers the use case; Telegram would broaden reach |
 | Voice input (Whisper on-device) | P3 | Moshi has this; reduces friction for mobile prompt authoring |
 | Android `.aab` release build + signing | P3 | Current APK is debug-signed; need Play Store-ready build |

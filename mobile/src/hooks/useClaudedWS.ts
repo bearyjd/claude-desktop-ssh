@@ -38,6 +38,7 @@ interface UseClaudedWSResult {
   decide: (tool_use_id: string, allow: boolean) => void;
   run: (prompt: string, container?: string, dangerouslySkipPermissions?: boolean, workDir?: string, command?: string) => void;
   kill: (sessionId?: string) => void;
+  sendInput: (text: string, sessionId?: string) => void;
   getNotifyConfig: () => void;
   getTokenUsage: (sessionId: string) => void;
   listDir: (path: string, cb: (ev: DirListingEvent) => void) => void;
@@ -121,6 +122,16 @@ export function useClaudedWS(): UseClaudedWSResult {
       wsRef.current.send(JSON.stringify({
         type: 'kill_session',
         session_id: sessionId ?? activeSessionId ?? '',
+      }));
+    }
+  }, [activeSessionId]);
+
+  const sendInput = useCallback((text: string, sessionId?: string) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: 'input',
+        session_id: sessionId ?? activeSessionId ?? '',
+        data: text.endsWith('\n') ? text : text + '\n',
       }));
     }
   }, [activeSessionId]);
@@ -281,6 +292,15 @@ export function useClaudedWS(): UseClaudedWSResult {
       resolvedToolIds.current.add(tool_use_id);
       setPendingApprovals((prev: PendingApproval[]) =>
         prev.filter((p: PendingApproval) => p.tool_use_id !== tool_use_id)
+      );
+    }
+
+    if (event.type === 'approval_warning') {
+      const { tool_use_id } = event as { type: string; tool_use_id: string };
+      setPendingApprovals((prev: PendingApproval[]) =>
+        prev.map((p: PendingApproval) =>
+          p.tool_use_id === tool_use_id ? { ...p, urgent: true } : p
+        )
       );
     }
 
@@ -510,6 +530,7 @@ export function useClaudedWS(): UseClaudedWSResult {
     decide,
     run,
     kill,
+    sendInput,
     getNotifyConfig,
     getTokenUsage,
     listDir,
