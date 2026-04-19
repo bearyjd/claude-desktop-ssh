@@ -11,6 +11,11 @@ export interface NotifyConfig {
   base_url: string;
 }
 
+export interface SkillInfo {
+  name: string;
+  description: string;
+}
+
 interface UseClaudedWSResult {
   status: ConnectionStatus;
   sessionStatus: SessionStatus;
@@ -22,13 +27,16 @@ interface UseClaudedWSResult {
   lastSeq: number;
   viewStartSeq: number;
   notifyConfig: NotifyConfig | null;
+  skills: SkillInfo[];
   connect: (config: ServerConfig) => void;
   disconnect: () => void;
   decide: (tool_use_id: string, allow: boolean) => void;
   run: (prompt: string, container?: string, dangerouslySkipPermissions?: boolean, workDir?: string, command?: string) => void;
   kill: (sessionId?: string) => void;
   getNotifyConfig: () => void;
+  getTokenUsage: (sessionId: string) => void;
   listDir: (path: string, cb: (ev: DirListingEvent) => void) => void;
+  listSkills: () => void;
 }
 
 export function useClaudedWS(): UseClaudedWSResult {
@@ -40,6 +48,7 @@ export function useClaudedWS(): UseClaudedWSResult {
   const [lastSeq, setLastSeq] = useState(0);
   const [viewStartSeq, setViewStartSeq] = useState(0);
   const [notifyConfig, setNotifyConfig] = useState<NotifyConfig | null>(null);
+  const [skills, setSkills] = useState<SkillInfo[]>([]);
 
   const wsRef = useRef<WebSocket | null>(null);
   const lastSeqRef = useRef(0);
@@ -100,6 +109,18 @@ export function useClaudedWS(): UseClaudedWSResult {
   const getNotifyConfig = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: 'get_notify_config' }));
+    }
+  }, []);
+
+  const getTokenUsage = useCallback((sessionId: string) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'get_token_usage', session_id: sessionId }));
+    }
+  }, []);
+
+  const listSkills = useCallback(() => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'list_skills' }));
     }
   }, []);
 
@@ -283,6 +304,30 @@ export function useClaudedWS(): UseClaudedWSResult {
         return;
       }
 
+      if (msgType === 'skills_list') {
+        setSkills((msg['skills'] as SkillInfo[] | undefined) ?? []);
+        return;
+      }
+
+      if (msgType === 'token_usage') {
+        const sid = msg['session_id'] as string | undefined;
+        if (sid) {
+          setSessions((prev: SessionInfo[]) =>
+            prev.map((s: SessionInfo) =>
+              s.session_id === sid
+                ? {
+                    ...s,
+                    input_tokens: (msg['input_tokens'] as number) ?? s.input_tokens,
+                    output_tokens: (msg['output_tokens'] as number) ?? s.output_tokens,
+                    cache_read_tokens: (msg['cache_read_tokens'] as number) ?? s.cache_read_tokens,
+                  }
+                : s
+            )
+          );
+        }
+        return;
+      }
+
       if ('seq' in msg && 'event' in msg) {
         const frame = msg as unknown as EventFrame;
         const seq = frame.seq;
@@ -321,12 +366,15 @@ export function useClaudedWS(): UseClaudedWSResult {
     lastSeq,
     viewStartSeq,
     notifyConfig,
+    skills,
     connect,
     disconnect,
     decide,
     run,
     kill,
     getNotifyConfig,
+    getTokenUsage,
     listDir,
+    listSkills,
   };
 }

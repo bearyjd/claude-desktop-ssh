@@ -16,7 +16,7 @@ import { SessionCard } from '../components/SessionCard';
 import { VoiceButton } from '../components/VoiceButton';
 import { SettingsScreen } from './SettingsScreen';
 import { ConnectionStatus, DirListingEvent, EventFrame, PendingApproval, SessionInfo, SessionStatus } from '../types';
-import type { NotifyConfig } from '../hooks/useClaudedWS';
+import type { NotifyConfig, SkillInfo } from '../hooks/useClaudedWS';
 
 interface MainScreenProps {
   status: ConnectionStatus;
@@ -36,6 +36,8 @@ interface MainScreenProps {
   onKill: (sessionId?: string) => void;
   onRequestNotifyConfig: () => void;
   listDir: (path: string, cb: (ev: DirListingEvent) => void) => void;
+  skills: SkillInfo[];
+  onListSkills: () => void;
 }
 
 const STATUS_COLOR: Record<ConnectionStatus, string> = {
@@ -71,6 +73,8 @@ export function MainScreen({
   onKill,
   onRequestNotifyConfig,
   listDir,
+  skills,
+  onListSkills,
 }: MainScreenProps) {
   const AGENTS = ['claude', 'codex', 'gemini', 'aider'] as const;
   type AgentName = typeof AGENTS[number];
@@ -161,6 +165,8 @@ export function MainScreen({
         onClose={() => setSettingsVisible(false)}
         notifyConfig={notifyConfig}
         onRequestNotifyConfig={onRequestNotifyConfig}
+        skills={skills}
+        onListSkills={onListSkills}
       />
 
       {/* Top bar */}

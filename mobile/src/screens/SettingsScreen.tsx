@@ -12,6 +12,8 @@ import {
 } from 'react-native';
 
 import { DEFAULT_WHISPER_ENDPOINT, STT_ENGINE_KEY, WHISPER_API_KEY_STORAGE, WHISPER_ENDPOINT_KEY } from '../components/VoiceButton';
+import { SkillsScreen } from './SkillsScreen';
+import type { SkillInfo } from '../hooks/useClaudedWS';
 
 const TS_API_KEY_STORAGE = 'tailscale_api_key';
 
@@ -25,9 +27,11 @@ interface SettingsScreenProps {
   onClose: () => void;
   notifyConfig: NotifyConfig | null;
   onRequestNotifyConfig: () => void;
+  skills: SkillInfo[];
+  onListSkills: () => void;
 }
 
-export function SettingsScreen({ visible, onClose, notifyConfig, onRequestNotifyConfig }: SettingsScreenProps) {
+export function SettingsScreen({ visible, onClose, notifyConfig, onRequestNotifyConfig, skills, onListSkills }: SettingsScreenProps) {
   const [copied, setCopied] = useState(false);
   const [tsApiKey, setTsApiKey] = useState('');
   const [tsKeySaved, setTsKeySaved] = useState(false);
@@ -35,6 +39,7 @@ export function SettingsScreen({ visible, onClose, notifyConfig, onRequestNotify
   const [whisperApiKey, setWhisperApiKey] = useState('');
   const [whisperEndpoint, setWhisperEndpoint] = useState('');
   const [whisperSaved, setWhisperSaved] = useState(false);
+  const [skillsVisible, setSkillsVisible] = useState(false);
 
   useEffect(() => {
     if (visible) {
@@ -87,6 +92,12 @@ export function SettingsScreen({ visible, onClose, notifyConfig, onRequestNotify
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+      <SkillsScreen
+        visible={skillsVisible}
+        onClose={() => setSkillsVisible(false)}
+        skills={skills}
+        onRefresh={onListSkills}
+      />
       <View style={styles.container}>
         <View style={styles.header}>
           <Text style={styles.title}>Settings</Text>
@@ -158,6 +169,18 @@ export function SettingsScreen({ visible, onClose, notifyConfig, onRequestNotify
             </Pressable>
           </View>
         </View>
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>Skills</Text>
+          <Text style={styles.sectionSubtitle}>
+            Browse skills installed on the remote host in ~/.claude/skills/.
+          </Text>
+          <Pressable style={styles.skillsBtn} onPress={() => setSkillsVisible(true)}>
+            <Text style={styles.skillsBtnText}>
+              Browse Skills ({skills.length}) →
+            </Text>
+          </Pressable>
+        </View>
+
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>Voice Input</Text>
           <Text style={styles.sectionSubtitle}>
@@ -337,6 +360,20 @@ const styles = StyleSheet.create({
   },
   subscribeBtnText: {
     color: '#93c5fd',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  skillsBtn: {
+    backgroundColor: '#1e1b4b',
+    borderRadius: 8,
+    paddingVertical: 14,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#3730a3',
+    marginTop: 4,
+  },
+  skillsBtnText: {
+    color: '#a5b4fc',
     fontSize: 15,
     fontWeight: '700',
   },

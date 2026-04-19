@@ -5,7 +5,13 @@ mod hook;
 mod notify;
 mod ws;
 
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc,
+    },
+};
 
 use anyhow::Result;
 use rusqlite::Connection;
@@ -34,6 +40,10 @@ pub struct SessionEntry {
     pub started_at: f64,
     /// Fires to kill the session; taken by the kill handler.
     pub kill_tx: Option<oneshot::Sender<()>>,
+    /// Cumulative token counts updated atomically as events stream in.
+    pub input_tokens: Arc<AtomicU64>,
+    pub output_tokens: Arc<AtomicU64>,
+    pub cache_read_tokens: Arc<AtomicU64>,
 }
 
 /// Sent from a WS client to start a claude session.
@@ -151,6 +161,19 @@ pub async fn run_session(
     };
     let _ = events_tx.send((seq, ts, started_json));
 
+    // Retrieve the token counters that were inserted into the sessions map by the WS handler.
+    let (input_tokens, output_tokens, cache_read_tokens) = {
+        let map = sessions.lock().await;
+        match map.get(&session_id) {
+            Some(e) => (e.input_tokens.clone(), e.output_tokens.clone(), e.cache_read_tokens.clone()),
+            None => (
+                Arc::new(AtomicU64::new(0)),
+                Arc::new(AtomicU64::new(0)),
+                Arc::new(AtomicU64::new(0)),
+            ),
+        }
+    };
+
     let result = claude::spawn_and_process(
         &req.prompt,
         req.container.as_deref(),
@@ -162,6 +185,9 @@ pub async fn run_session(
         db.clone(),
         pending,
         events_tx.clone(),
+        input_tokens,
+        output_tokens,
+        cache_read_tokens,
     )
     .await;
 
@@ -212,6 +238,9 @@ pub async fn sessions_snapshot(sessions: &Sessions) -> Vec<serde_json::Value> {
                 "container": e.container,
                 "command": e.command,
                 "started_at": e.started_at,
+                "input_tokens": e.input_tokens.load(Ordering::Relaxed),
+                "output_tokens": e.output_tokens.load(Ordering::Relaxed),
+                "cache_read_tokens": e.cache_read_tokens.load(Ordering::Relaxed),
             })
         })
         .collect()

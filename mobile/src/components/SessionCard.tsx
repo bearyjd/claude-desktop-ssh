@@ -23,6 +23,12 @@ function detectAgent(session: SessionInfo): string {
   return 'Claude';
 }
 
+function formatTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return String(n);
+}
+
 function formatElapsed(seconds: number): string {
   if (seconds < 60) return `${seconds}s`;
   const m = Math.floor(seconds / 60);
@@ -54,6 +60,10 @@ export function SessionCard({ session, isActive, onSelect, hasPendingApproval = 
     : session.prompt;
   const dotColor = statusDotColor(hasPendingApproval, isActive);
 
+  const inputTok = session.input_tokens ?? 0;
+  const outputTok = session.output_tokens ?? 0;
+  const showTokens = inputTok > 0 || outputTok > 0;
+
   return (
     <Pressable
       style={[styles.card, isActive && styles.cardActive]}
@@ -76,6 +86,12 @@ export function SessionCard({ session, isActive, onSelect, hasPendingApproval = 
         ) : null}
         <Text style={styles.elapsed}>{formatElapsed(Math.max(0, elapsed))}</Text>
       </View>
+
+      {showTokens ? (
+        <Text style={styles.tokens}>
+          {`\u2191${formatTokens(inputTok)} \u2193${formatTokens(outputTok)}`}
+        </Text>
+      ) : null}
     </Pressable>
   );
 }
@@ -134,5 +150,11 @@ const styles = StyleSheet.create({
     color: '#6b7280',
     fontSize: 11,
     fontFamily: 'Menlo',
+  },
+  tokens: {
+    color: '#4b5563',
+    fontSize: 10,
+    fontFamily: 'Menlo',
+    marginTop: 4,
   },
 });

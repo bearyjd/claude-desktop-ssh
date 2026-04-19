@@ -1,4 +1,7 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc, Mutex,
+};
 
 use anyhow::{Context, Result};
 use futures_util::{SinkExt, StreamExt};
@@ -225,6 +228,9 @@ async fn handle_ws(
                                         command: command.clone(),
                                         started_at: unix_ts(),
                                         kill_tx: Some(kill_tx),
+                                        input_tokens: Arc::new(AtomicU64::new(0)),
+                                        output_tokens: Arc::new(AtomicU64::new(0)),
+                                        cache_read_tokens: Arc::new(AtomicU64::new(0)),
                                     });
                                     crate::emit_session_list_changed(&sessions, &events_tx).await;
 
@@ -271,6 +277,28 @@ async fn handle_ws(
                                 if sink.send(Message::Text(reply)).await.is_err() {
                                     break;
                                 }
+                            } else if msg_type == "get_token_usage" {
+                                let session_id = v.get("session_id").and_then(|v| v.as_str()).unwrap_or("");
+                                let reply = if let Some(entry) = sessions.lock().await.get(session_id) {
+                                    serde_json::to_string(&serde_json::json!({
+                                        "type": "token_usage",
+                                        "session_id": session_id,
+                                        "input_tokens": entry.input_tokens.load(Ordering::Relaxed),
+                                        "output_tokens": entry.output_tokens.load(Ordering::Relaxed),
+                                        "cache_read_tokens": entry.cache_read_tokens.load(Ordering::Relaxed),
+                                    })).unwrap_or_default()
+                                } else {
+                                    serde_json::to_string(&serde_json::json!({
+                                        "type": "token_usage",
+                                        "session_id": session_id,
+                                        "input_tokens": 0,
+                                        "output_tokens": 0,
+                                        "cache_read_tokens": 0,
+                                    })).unwrap_or_default()
+                                };
+                                if sink.send(Message::Text(reply)).await.is_err() {
+                                    break;
+                                }
                             } else if msg_type == "get_notify_config" {
                                 let reply = serde_json::to_string(&serde_json::json!({
                                     "type": "notify_config",
@@ -279,6 +307,39 @@ async fn handle_ws(
                                 })).unwrap_or_default();
                                 if sink.send(Message::Text(reply)).await.is_err() {
                                     break;
+                                }
+                            } else if msg_type == "list_skills" {
+                                let home = std::env::var("HOME").unwrap_or_default();
+                                let skills_dir = std::path::PathBuf::from(&home).join(".claude/skills");
+                                let mut skills = Vec::new();
+                                if let Ok(entries) = std::fs::read_dir(&skills_dir) {
+                                    for entry in entries.flatten() {
+                                        if entry.path().is_dir() {
+                                            let skill_name = entry.file_name().to_string_lossy().to_string();
+                                            let skill_md = entry.path().join("SKILL.md");
+                                            let description = std::fs::read_to_string(&skill_md)
+                                                .ok()
+                                                .and_then(|s| {
+                                                    s.lines()
+                                                        .find(|l| !l.starts_with('#') && !l.trim().is_empty() && !l.starts_with("---"))
+                                                        .map(|l| l.trim().to_string())
+                                                })
+                                                .unwrap_or_default();
+                                            skills.push(serde_json::json!({
+                                                "name": skill_name,
+                                                "description": description,
+                                            }));
+                                        }
+                                    }
+                                }
+                                skills.sort_by(|a, b| {
+                                    a["name"].as_str().unwrap_or("").cmp(b["name"].as_str().unwrap_or(""))
+                                });
+                                let response = serde_json::json!({ "type": "skills_list", "skills": skills });
+                                if let Ok(s) = serde_json::to_string(&response) {
+                                    if sink.send(Message::Text(s)).await.is_err() {
+                                        break;
+                                    }
                                 }
                             } else if msg_type == "list_dir" {
                                 let raw_path = v.get("path").and_then(|p| p.as_str()).unwrap_or("~");

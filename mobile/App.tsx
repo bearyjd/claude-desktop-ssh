@@ -14,7 +14,7 @@ import { ServerConfig } from './src/types';
 const LAST_CONFIG_KEY = 'clauded_last_config';
 
 export default function App() {
-  const { status, sessionStatus, sessions, activeSessionId, setActiveSessionId, events, pendingApprovals, lastSeq, viewStartSeq, notifyConfig, connect, disconnect, decide, run, kill, getNotifyConfig, listDir } = useClaudedWS();
+  const { status, sessionStatus, sessions, activeSessionId, setActiveSessionId, events, pendingApprovals, lastSeq, viewStartSeq, notifyConfig, connect, disconnect, decide, run, kill, getNotifyConfig, listDir, skills, listSkills } = useClaudedWS();
   const [config, setConfig] = useState<ServerConfig | null>(null);
   const [isLocked, setIsLocked] = useState(false);
 
@@ -118,6 +118,8 @@ export default function App() {
             onKill={kill}
             onRequestNotifyConfig={getNotifyConfig}
             listDir={listDir}
+            skills={skills}
+            onListSkills={listSkills}
           />
         ) : (
           <ConnectScreen

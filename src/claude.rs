@@ -1,5 +1,8 @@
 use std::io::{BufRead, BufReader};
-use std::sync::{Arc, Mutex};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc, Mutex,
+};
 
 use anyhow::{Context, Result};
 use portable_pty::{CommandBuilder, PtySize, native_pty_system};
@@ -26,6 +29,9 @@ pub async fn spawn_and_process(
     db: Arc<Mutex<Connection>>,
     _pending: PendingApprovals,
     events_tx: EventTx,
+    input_tokens: Arc<AtomicU64>,
+    output_tokens: Arc<AtomicU64>,
+    cache_read_tokens: Arc<AtomicU64>,
 ) -> Result<()> {
     if !dangerously_skip_permissions {
         write_hook_settings().context("failed to write hook settings")?;
@@ -186,6 +192,19 @@ pub async fn spawn_and_process(
                 .and_then(|t| t.as_str())
                 .unwrap_or("unknown");
             tracing::info!(seq, event_type, "event logged");
+
+            // Parse usage fields from assistant events and accumulate token counts.
+            if let Some(usage) = v.get("usage") {
+                if let Some(n) = usage.get("input_tokens").and_then(|v| v.as_u64()) {
+                    input_tokens.fetch_add(n, Ordering::Relaxed);
+                }
+                if let Some(n) = usage.get("output_tokens").and_then(|v| v.as_u64()) {
+                    output_tokens.fetch_add(n, Ordering::Relaxed);
+                }
+                if let Some(n) = usage.get("cache_read_input_tokens").and_then(|v| v.as_u64()) {
+                    cache_read_tokens.fetch_add(n, Ordering::Relaxed);
+                }
+            }
         }
     } // end inner block
     } // end loop

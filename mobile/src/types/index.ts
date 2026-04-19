@@ -75,6 +75,9 @@ export interface SessionInfo {
   prompt: string;
   container?: string | null;
   started_at: number;
+  input_tokens?: number;
+  output_tokens?: number;
+  cache_read_tokens?: number;
 }
 
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'authenticating' | 'connected' | 'error';
