@@ -92,19 +92,27 @@ async fn main() -> Result<()> {
                         "approval_pending" => {
                             let tool = v["tool_name"].as_str().unwrap_or("tool");
                             let _ = notify.publish("Claude needs approval", tool, "default", &["warning"]).await;
+                            let _ = notify.send_telegram(&format!("⚠️ Claude needs approval: {tool}")).await;
                         }
                         "approval_warning" => {
                             let secs = v["seconds_remaining"].as_u64().unwrap_or(30);
                             let body = format!("Expires in {secs}s");
                             let _ = notify.publish("Approval expiring", &body, "high", &["stopwatch"]).await;
+                            let _ = notify.send_telegram(&format!("⏱️ Approval expiring in {secs}s")).await;
                         }
                         "approval_expired" => {
                             let _ = notify.publish("Auto-denied", "Approval timed out", "default", &[]).await;
+                            let _ = notify.send_telegram("❌ Approval timed out and was auto-denied").await;
                         }
                         "session_ended" => {
                             let ok = v["ok"].as_bool().unwrap_or(false);
-                            let (title, tag) = if ok { ("Session done", "white_check_mark") } else { ("Session failed", "x") };
+                            let (title, tag, emoji) = if ok {
+                                ("Session done", "white_check_mark", "✓")
+                            } else {
+                                ("Session failed", "x", "✗")
+                            };
                             let _ = notify.publish(title, "", "low", &[tag]).await;
+                            let _ = notify.send_telegram(&format!("{emoji} Session {title}")).await;
                         }
                         _ => {}
                     }

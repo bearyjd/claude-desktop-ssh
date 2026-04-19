@@ -9,6 +9,8 @@ pub struct NotifyConfig {
     pub ntfy_base_url: String,
     pub ntfy_topic: String,
     pub ntfy_token: String,
+    pub telegram_bot_token: String,
+    pub telegram_chat_id: String,
 }
 
 #[derive(Debug, Clone)]
@@ -60,6 +62,16 @@ pub fn load_or_create() -> Result<Config> {
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string();
+        let telegram_bot_token = table
+            .get("telegram_bot_token")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let telegram_chat_id = table
+            .get("telegram_chat_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
 
         // Generate and persist ntfy_topic on first access for existing configs.
         // Atomic write: build new content, write to .tmp, fsync, rename.
@@ -85,7 +97,13 @@ pub fn load_or_create() -> Result<Config> {
             approval_ttl_secs,
             approval_warn_before_secs,
             max_concurrent_sessions,
-            notify: NotifyConfig { ntfy_base_url, ntfy_topic, ntfy_token },
+            notify: NotifyConfig {
+                ntfy_base_url,
+                ntfy_topic,
+                ntfy_token,
+                telegram_bot_token,
+                telegram_chat_id,
+            },
         });
     }
 
@@ -98,7 +116,7 @@ pub fn load_or_create() -> Result<Config> {
         .with_context(|| format!("failed to create {}", dir.display()))?;
 
     let content = format!(
-        "token = \"{token}\"\nws_port = 7878\napproval_ttl_secs = 300\napproval_warn_before_secs = 30\nmax_concurrent_sessions = 4\nntfy_base_url = \"https://ntfy.sh\"\nntfy_topic = \"{ntfy_topic}\"\nntfy_token = \"\"\n"
+        "token = \"{token}\"\nws_port = 7878\napproval_ttl_secs = 300\napproval_warn_before_secs = 30\nmax_concurrent_sessions = 4\nntfy_base_url = \"https://ntfy.sh\"\nntfy_topic = \"{ntfy_topic}\"\nntfy_token = \"\"\ntelegram_bot_token = \"\"\ntelegram_chat_id = \"\"\n"
     );
 
     std::fs::OpenOptions::new()
@@ -130,6 +148,8 @@ pub fn load_or_create() -> Result<Config> {
             ntfy_base_url: "https://ntfy.sh".to_string(),
             ntfy_topic,
             ntfy_token: String::new(),
+            telegram_bot_token: String::new(),
+            telegram_chat_id: String::new(),
         },
     })
 }
