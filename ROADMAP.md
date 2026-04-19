@@ -35,18 +35,37 @@ Self-hosted, subscription-free AI agent remote control — a Rust PTY daemon + R
 - `DiffView.tsx`: collapsible unified diff viewer with +/- line coloring and hunk headers
 - Integrated into expanded tool_result blocks in ChatView
 
+### Sprint 6 — Session dashboard
+- `SessionCard.tsx`: card with agent label, prompt preview, status dot, elapsed time (live tick)
+- `MainScreen`: horizontal FlatList of cards when sessions > 1; falls back to pill row for single session
+- `hasPendingApproval` highlights active session card yellow
+
+### Token usage tracking (P2)
+- `SessionEntry` gains `input_tokens`/`output_tokens`/`cache_read_tokens` as `Arc<AtomicU64>`
+- `claude.rs` parses `usage` fields from JSON stream and accumulates into atomics
+- `get_token_usage` WS message returns live counts; `sessions_snapshot` includes totals
+- `SessionCard` shows `↑N ↓N` token summary when counts > 0
+
+### Installed skills browser (P2)
+- `list_skills` WS message reads `~/.claude/skills/` subdirs, extracts description from `SKILL.md`
+- `SkillsScreen.tsx`: FlatList modal (name, description, folder icon, refresh button)
+- Accessible via Settings → Browse Skills
+
+### Session history replay (P2)
+- `db.rs`: `get_session_list()` and `get_session_events()` query past sessions from SQLite
+- `list_past_sessions` / `get_session_history` WS messages
+- `SessionHistoryScreen.tsx`: two-panel viewer (session list + read-only event replay)
+- Accessible via Settings → Session History
+
+### Scheduled / cron sessions (P2)
+- `scheduled_sessions` SQLite table; 30s polling scheduler task in daemon
+- `schedule_session` / `cancel_scheduled_session` / `list_scheduled_sessions` WS messages
+- `ScheduleScreen.tsx`: +1h/+4h/+8h/+24h quick buttons + custom hours input, pending list with cancel
+- Accessible via Settings → Scheduled Sessions
+
 ---
 
 ## Next Up
-
-### Sprint 6 — Session dashboard *(P1)*
-
-Multi-session support exists architecturally; the UX needs a board-level view. Flat session list is insufficient when running 3+ parallel sessions.
-
-**Scope:**
-- Card-based dashboard: session status (running / waiting-approval / blocked / done), active file, elapsed time, agent type
-- Replace or supplement horizontal pill row with a scrollable card grid
-- Status color-coding; tap card to switch active session
 
 ### Sprint 7 — Apple Watch approval companion *(P1)*
 
@@ -81,10 +100,10 @@ WebSocket drops on network change (WiFi → cellular, subway tunnels, sleep). Mo
 
 | Feature | Priority | Notes |
 |---|---|---|
-| Token usage tracking per session | P2 | Input/output/cache tokens per session_id; aggregate view in dashboard |
-| Scheduled / cron sessions | P2 | Schedule a session start from mobile; overnight batch workflows |
-| Session recording + replay | P2 | Store full PTY stream; replay after the fact for debugging/audit |
-| Installed skills browser | P2 | Mobile UI to browse `~/.claude/skills/` on the remote host; show skill name, description, and trigger keywords; read-only view via new WS request/response |
+| Token usage tracking per session | ~~P2~~ **shipped** | SessionCard shows live ↑/↓ counts; get_token_usage WS message |
+| Scheduled / cron sessions | ~~P2~~ **shipped** | ScheduleScreen with quick buttons; 30s daemon polling loop |
+| Session recording + replay | ~~P2~~ **shipped** | SessionHistoryScreen reads past events from SQLite |
+| Installed skills browser | ~~P2~~ **shipped** | SkillsScreen lists ~/.claude/skills/ with descriptions |
 | Telegram notification channel | P3 | ntfy.sh covers the use case; Telegram would broaden reach |
 | Voice input (Whisper on-device) | P3 | Moshi has this; reduces friction for mobile prompt authoring |
 | Android `.aab` release build + signing | P3 | Current APK is debug-signed; need Play Store-ready build |
