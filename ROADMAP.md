@@ -77,14 +77,18 @@ AgentApprove is the only current tool with watchOS support — it's a standout d
 - Single-glance: tool name, truncated input, Permit / Deny actions
 - Complication showing count of pending approvals
 
-### Sprint 8 — Mosh transport option *(P1)*
+### Sprint 8 — Transport resilience *(P1)*
 
-WebSocket drops on network change (WiFi → cellular, subway tunnels, sleep). Moshi and Blink Shell users consistently cite mosh resilience as a key advantage for mobile terminal use. clauded sessions should survive network transitions.
+WebSocket drops on network change (WiFi → cellular, subway tunnels, sleep) were unrecoverable — required manual reconnect and lost session state.
 
-**Scope:**
-- Mosh server mode in daemon (UDP-based, roaming-aware)
-- React Native client: mosh transport toggle in connection config
-- Graceful fallback to WebSocket when mosh unavailable
+**Shipped (pragmatic reconnect):**
+- `useClaudedWS`: exponential backoff auto-reconnect (1s → 30s) on unexpected close
+- Last seen `seq` tracked; reconnect sends `attach` with `since=lastSeq` for server-side replay
+- Missed events de-duped by existing seq guard; full event history preserved across reconnects
+- `shouldReconnectRef` suppresses reconnect on intentional disconnect or auth rejection
+- Mobile status bar: yellow "Reconnecting…" badge + 2s green "Reconnected" flash on recovery
+
+**Deferred:** Full mosh/UDP transport (requires separate mosh binary + RN UDP bridge — out of scope for current phase)
 
 ---
 
