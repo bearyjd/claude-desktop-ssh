@@ -15,7 +15,7 @@ import { ErrorBoundary } from './src/components/ErrorBoundary';
 const LAST_CONFIG_KEY = 'clauded_last_config';
 
 export default function App() {
-  const { status, sessionStatus, sessions, activeSessionId, setActiveSessionId, events, pendingApprovals, lastSeq, viewStartSeq, notifyConfig, reconnecting, reconnectCount, connect, disconnect, decide, run, kill, sendInput, getNotifyConfig, listDir, skills, listSkills, pastSessions, sessionHistory, listPastSessions, getSessionHistory, scheduledSessions, scheduleSession, cancelScheduledSession, listScheduledSessions } = useClaudedWS();
+  const { status, sessionStatus, sessions, activeSessionId, setActiveSessionId, events, pendingApprovals, lastSeq, viewStartSeq, notifyConfig, testNotificationResult, reconnecting, reconnectCount, connect, disconnect, decide, run, kill, sendInput, getNotifyConfig, sendTestNotification, listDir, skills, listSkills, pastSessions, sessionHistory, listPastSessions, getSessionHistory, scheduledSessions, scheduleSession, cancelScheduledSession, listScheduledSessions } = useClaudedWS();
   const [config, setConfig] = useState<ServerConfig | null>(null);
   const [isLocked, setIsLocked] = useState(false);
 
@@ -122,6 +122,8 @@ export default function App() {
               onKill={kill}
               onSendInput={sendInput}
               onRequestNotifyConfig={getNotifyConfig}
+              onSendTestNotification={sendTestNotification}
+              testNotificationResult={testNotificationResult}
               listDir={listDir}
               skills={skills}
               onListSkills={listSkills}

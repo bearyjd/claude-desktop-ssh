@@ -14,14 +14,16 @@ clauded is a Rust PTY daemon that lets you control Claude Code (and other AI age
 ## Features
 
 - **Multi-session daemon** — up to 4 concurrent agent sessions (configurable)
-- **Tool approval gate** — permit or deny tool calls from your phone with a configurable timeout and auto-deny on expiry
+- **Tool approval gate** — permit or deny tool calls from your phone with a configurable timeout and auto-deny on expiry; orange pulse warning ≤30s
+- **Mid-session text input** — steer the agent without stopping the session
+- **Skill launcher** — browse `~/.claude/skills/` and run any skill as `/skill-name` from mobile
+- **Advanced session start** — collapsible panel with custom command, work-dir picker, and `--dangerously-skip-permissions` toggle
 - **Push notifications** — via [ntfy.sh](https://ntfy.sh) (self-hostable, no Apple Push/FCM account needed)
 - **Multi-agent support** — run `claude`, `codex`, `gemini`, `aider`, or any custom binary
 - **Visual diff viewer** — collapsible unified diff with +/− line coloring for file edits
 - **Session dashboard** — live cards with agent label, status, elapsed time, and token usage
 - **Scheduled sessions** — fire at +1h, +4h, +8h, or a custom time
-- **Session history replay** — browse and replay past sessions from SQLite
-- **Installed skills browser** — lists `~/.claude/skills/` with descriptions
+- **Session history replay** — past sessions render full tool-use detail with diffs, not just plain text
 - **Telegram notifications** — optional channel alongside ntfy
 - **WebSocket auto-reconnect** — exponential backoff with event replay on reconnect
 

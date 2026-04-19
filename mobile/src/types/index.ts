@@ -127,3 +127,9 @@ export interface ScheduledSessionInfo {
   created_at: number;
   fired: boolean;
 }
+
+export interface TestNotificationSentEvent {
+  type: 'test_notification_sent';
+  ok: boolean;
+  error?: string;
+}

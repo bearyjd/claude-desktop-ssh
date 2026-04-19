@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { EventFrame, PendingApproval, ConnectionStatus, ServerConfig, SessionStatus, SessionInfo, AssistantEvent, ToolUseBlock, DirListingEvent, PastSessionInfo, ScheduledSessionInfo } from '../types';
+import { EventFrame, PendingApproval, ConnectionStatus, ServerConfig, SessionStatus, SessionInfo, AssistantEvent, ToolUseBlock, DirListingEvent, PastSessionInfo, ScheduledSessionInfo, TestNotificationSentEvent } from '../types';
 
 const LAST_SEQ_KEY = 'clauded_last_seq';
 
@@ -27,6 +27,7 @@ interface UseClaudedWSResult {
   lastSeq: number;
   viewStartSeq: number;
   notifyConfig: NotifyConfig | null;
+  testNotificationResult: 'idle' | 'sent' | 'failed';
   skills: SkillInfo[];
   pastSessions: PastSessionInfo[];
   sessionHistory: Record<string, EventFrame[]>;
@@ -40,6 +41,7 @@ interface UseClaudedWSResult {
   kill: (sessionId?: string) => void;
   sendInput: (text: string, sessionId?: string) => void;
   getNotifyConfig: () => void;
+  sendTestNotification: () => void;
   getTokenUsage: (sessionId: string) => void;
   listDir: (path: string, cb: (ev: DirListingEvent) => void) => void;
   listSkills: () => void;
@@ -59,6 +61,7 @@ export function useClaudedWS(): UseClaudedWSResult {
   const [lastSeq, setLastSeq] = useState(0);
   const [viewStartSeq, setViewStartSeq] = useState(0);
   const [notifyConfig, setNotifyConfig] = useState<NotifyConfig | null>(null);
+  const [testNotificationResult, setTestNotificationResult] = useState<'idle' | 'sent' | 'failed'>('idle');
   const [skills, setSkills] = useState<SkillInfo[]>([]);
   const [pastSessions, setPastSessions] = useState<PastSessionInfo[]>([]);
   const [sessionHistory, setSessionHistory] = useState<Record<string, EventFrame[]>>({});
@@ -139,6 +142,12 @@ export function useClaudedWS(): UseClaudedWSResult {
   const getNotifyConfig = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: 'get_notify_config' }));
+    }
+  }, []);
+
+  const sendTestNotification = useCallback(() => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'send_test_notification' }));
     }
   }, []);
 
@@ -395,6 +404,12 @@ export function useClaudedWS(): UseClaudedWSResult {
         return;
       }
 
+      if (msgType === 'test_notification_sent') {
+        const ev = msg as unknown as TestNotificationSentEvent;
+        setTestNotificationResult(ev.ok ? 'sent' : 'failed');
+        return;
+      }
+
       if (msgType === 'dir_listing') {
         dirListingCallbackRef.current?.(msg as unknown as DirListingEvent);
         return;
@@ -519,6 +534,7 @@ export function useClaudedWS(): UseClaudedWSResult {
     lastSeq,
     viewStartSeq,
     notifyConfig,
+    testNotificationResult,
     skills,
     pastSessions,
     sessionHistory,
@@ -532,6 +548,7 @@ export function useClaudedWS(): UseClaudedWSResult {
     kill,
     sendInput,
     getNotifyConfig,
+    sendTestNotification,
     getTokenUsage,
     listDir,
     listSkills,

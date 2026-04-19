@@ -30,6 +30,8 @@ interface SettingsScreenProps {
   onClose: () => void;
   notifyConfig: NotifyConfig | null;
   onRequestNotifyConfig: () => void;
+  onSendTestNotification: () => void;
+  testNotificationResult: 'idle' | 'sent' | 'failed';
   skills: SkillInfo[];
   onListSkills: () => void;
   onRunSkill: (prompt: string) => void;
@@ -43,8 +45,16 @@ interface SettingsScreenProps {
   onListScheduledSessions: () => void;
 }
 
-export function SettingsScreen({ visible, onClose, notifyConfig, onRequestNotifyConfig, skills, onListSkills, onRunSkill, pastSessions, sessionHistory, onListPastSessions, onGetSessionHistory, scheduledSessions, onScheduleSession, onCancelScheduledSession, onListScheduledSessions }: SettingsScreenProps) {
+export function SettingsScreen({ visible, onClose, notifyConfig, onRequestNotifyConfig, onSendTestNotification, testNotificationResult, skills, onListSkills, onRunSkill, pastSessions, sessionHistory, onListPastSessions, onGetSessionHistory, scheduledSessions, onScheduleSession, onCancelScheduledSession, onListScheduledSessions }: SettingsScreenProps) {
   const [copied, setCopied] = useState(false);
+  const [testFeedback, setTestFeedback] = useState<'idle' | 'sent' | 'failed'>('idle');
+
+  useEffect(() => {
+    if (testNotificationResult === 'idle') return;
+    setTestFeedback(testNotificationResult);
+    const timer = setTimeout(() => setTestFeedback('idle'), 3000);
+    return () => clearTimeout(timer);
+  }, [testNotificationResult]);
   const [tsApiKey, setTsApiKey] = useState('');
   const [tsKeySaved, setTsKeySaved] = useState(false);
   const [sttEngine, setSttEngine] = useState<'ondevice' | 'whisper'>('ondevice');
@@ -182,6 +192,16 @@ export function SettingsScreen({ visible, onClose, notifyConfig, onRequestNotify
             disabled={!notifyConfig?.topic}
           >
             <Text style={styles.subscribeBtnText}>Open in ntfy app →</Text>
+          </Pressable>
+
+          <Pressable
+            style={[styles.testBtn, !notifyConfig?.topic && styles.subscribeBtnDisabled]}
+            onPress={onSendTestNotification}
+            disabled={!notifyConfig?.topic}
+          >
+            <Text style={styles.testBtnText}>
+              {testFeedback === 'sent' ? '✓ Sent' : testFeedback === 'failed' ? '✗ Failed' : 'Send test notification'}
+            </Text>
           </Pressable>
         </View>
 
@@ -441,6 +461,19 @@ const styles = StyleSheet.create({
     color: '#93c5fd',
     fontSize: 15,
     fontWeight: '700',
+  },
+  testBtn: {
+    backgroundColor: '#111',
+    borderRadius: 8,
+    paddingVertical: 14,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#2a2a2a',
+  },
+  testBtnText: {
+    color: '#888',
+    fontSize: 15,
+    fontWeight: '600',
   },
   historyBtn: {
     backgroundColor: '#0d1a2e',

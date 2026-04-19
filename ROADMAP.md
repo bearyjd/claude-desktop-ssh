@@ -106,13 +106,13 @@ Features the daemon supports that mobile does not yet expose:
 
 | Gap | Area | Detail |
 |---|---|---|
-| Free-text mid-session input | Mobile UI | Daemon `input` WS handler accepts any text/stdin; mobile only surfaces tool-approval cards — no "type a message" field |
-| `approval_warning` event | Mobile | Daemon emits it; `useClaudedWS` ignores it — ApprovalCard countdown covers most of the UX but the event is silently dropped |
-| Launch a skill | SkillsScreen | Lists `~/.claude/skills/` descriptions but has no "Run" action — no way to invoke a skill from mobile |
-| Custom `work_dir` + `command` override | Session start UI | Both fields are wired in `run()` but there is no input field in the session-start modal |
-| `dangerously_skip_permissions` toggle | Session start UI | Param exists in `run()` but no UI toggle exposes it |
-| Session history detail | SessionHistoryScreen | Replays events but does not render diff blocks or tool-use details — read-only plain text only |
-| ntfy onboarding flow | SettingsScreen | Topic shown, deep-link present, but no in-app subscribe/test-notification flow |
+| ~~Free-text mid-session input~~ | ~~Mobile UI~~ | **shipped 2026-04-19** — ChatView input bar; `sendInput()` in useClaudedWS |
+| ~~`approval_warning` event~~ | ~~Mobile~~ | **shipped 2026-04-19** — useClaudedWS marks approval `urgent`; ApprovalCard pulses orange border |
+| ~~Launch a skill~~ | ~~SkillsScreen~~ | **shipped 2026-04-19** — Per-row Run button fires `/<skill-name>` |
+| ~~Custom `work_dir` + `command` override~~ | ~~Session start UI~~ | **shipped 2026-04-19** — Collapsible Advanced panel |
+| ~~`dangerously_skip_permissions` toggle~~ | ~~Session start UI~~ | **shipped 2026-04-19** — Switch in Advanced panel with red warning |
+| ~~Session history detail~~ | ~~SessionHistoryScreen~~ | **shipped 2026-04-19** — Extracted EventLog component shared with ChatView; full DiffView + tool-use rendering in replay |
+| ~~ntfy onboarding flow~~ | ~~SettingsScreen~~ | **shipped 2026-04-19** — Notifications section with topic, deep-link, send-test button; daemon `send_test_notification` WS handler |
 
 ---
 

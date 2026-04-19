@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -9,7 +8,7 @@ import {
   View,
 } from 'react-native';
 import { ApprovalCard } from './ApprovalCard';
-import { DiffView } from './DiffView';
+import { ToolCallRow } from './EventLog';
 import {
   AssistantEvent,
   EventFrame,
@@ -39,17 +38,8 @@ function buildResultMap(events: EventFrame[]): Map<string, string> {
   return map;
 }
 
-function summarizeInput(name: string, input: Record<string, unknown>): string {
-  if (name === 'Bash' && input.command) return String(input.command).slice(0, 120);
-  if (input.path) return String(input.path).slice(0, 120);
-  if (input.file_path) return String(input.file_path).slice(0, 120);
-  if (input.pattern) return String(input.pattern).slice(0, 120);
-  const first = Object.values(input)[0];
-  return first ? String(first).slice(0, 120) : '';
-}
-
-function ToolCallRow({
-  name, input, resultContent, isPending, onDecide, approval,
+function PendingToolCallRow({
+  toolUseId, name, input, resultContent, isPending, onDecide, approval,
 }: {
   toolUseId: string;
   name: string;
@@ -59,94 +49,18 @@ function ToolCallRow({
   onDecide: (id: string, allow: boolean) => void;
   approval?: PendingApproval;
 }) {
-  const [expanded, setExpanded] = useState(false);
-  const summary = summarizeInput(name, input);
-
   if (isPending && approval) {
     return <ApprovalCard approval={approval} onDecide={onDecide} />;
   }
-
   return (
-    <View style={tcStyles.container}>
-      <Pressable onPress={() => setExpanded(x => !x)} style={tcStyles.header}>
-        <View style={tcStyles.nameRow}>
-          <Text style={[tcStyles.status, resultContent !== undefined ? tcStyles.statusDone : tcStyles.statusPending]}>
-            {resultContent !== undefined ? '✓' : '·'}
-          </Text>
-          <Text style={tcStyles.toolName}>{name}</Text>
-          {!expanded && summary.length > 0 && (
-            <Text style={tcStyles.summary} numberOfLines={1}>{summary}</Text>
-          )}
-        </View>
-        <Text style={tcStyles.chevron}>{expanded ? '▲' : '▼'}</Text>
-      </Pressable>
-      {expanded && (
-        <View style={tcStyles.body}>
-          <Text selectable style={tcStyles.code}>{JSON.stringify(input, null, 2)}</Text>
-          {resultContent !== undefined && (
-            <>
-              <View style={tcStyles.divider} />
-              <Text selectable style={tcStyles.result}>
-                {resultContent.length > 4000 ? resultContent.slice(0, 4000) + '\n…' : resultContent}
-              </Text>
-              <DiffView content={resultContent} />
-            </>
-          )}
-        </View>
-      )}
-    </View>
+    <ToolCallRow
+      toolUseId={toolUseId}
+      name={name}
+      input={input}
+      resultContent={resultContent}
+    />
   );
 }
-
-const tcStyles = StyleSheet.create({
-  container: {
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#222',
-    backgroundColor: '#0d0d0d',
-    overflow: 'hidden',
-    marginVertical: 2,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 },
-  status: { fontSize: 12, width: 14 },
-  statusDone: { color: '#4ade80' },
-  statusPending: { color: '#71717a' },
-  toolName: { color: '#93c5fd', fontSize: 13, fontWeight: '600' },
-  summary: {
-    color: '#7e8ea0',
-    fontSize: 12,
-    fontFamily: Platform.OS === 'android' ? 'monospace' : 'Menlo',
-    flex: 1,
-  },
-  chevron: { color: '#6b7280', fontSize: 10, marginLeft: 8 },
-  body: {
-    paddingHorizontal: 12,
-    paddingBottom: 10,
-    borderTopWidth: 1,
-    borderTopColor: '#1a1a1a',
-  },
-  code: {
-    color: '#b8bfca',
-    fontFamily: Platform.OS === 'android' ? 'monospace' : 'Menlo',
-    fontSize: 11,
-    lineHeight: 17,
-    paddingTop: 8,
-  },
-  divider: { height: 1, backgroundColor: '#1a1a1a', marginVertical: 8 },
-  result: {
-    color: '#fb923c',
-    fontFamily: Platform.OS === 'android' ? 'monospace' : 'Menlo',
-    fontSize: 11,
-    lineHeight: 17,
-  },
-});
 
 export function ChatView({ events, pendingApprovals, onDecide, viewStartSeq, activeSessionId, sessionRunning, onSendInput }: ChatViewProps) {
   const scrollRef = useRef<ScrollView>(null);
@@ -219,7 +133,7 @@ export function ChatView({ events, pendingApprovals, onDecide, viewStartSeq, act
         } else if (block.type === 'tool_use') {
           const tb = block as ToolUseBlock;
           items.push(
-            <ToolCallRow
+            <PendingToolCallRow
               key={`tc-${tb.id}`}
               toolUseId={tb.id}
               name={tb.name}

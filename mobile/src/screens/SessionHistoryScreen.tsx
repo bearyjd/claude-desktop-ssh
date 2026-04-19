@@ -4,11 +4,11 @@ import {
   Modal,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { EventLog } from '../components/EventLog';
 import { EventFrame, PastSessionInfo } from '../types';
 
 interface SessionHistoryScreenProps {
@@ -25,123 +25,6 @@ function formatDate(ts: number): string {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) +
     ' ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
 }
-
-function HistoryEventList({ events }: { events: EventFrame[] }) {
-  if (events.length === 0) {
-    return (
-      <View style={evStyles.empty}>
-        <Text style={evStyles.emptyText}>Loading events…</Text>
-      </View>
-    );
-  }
-
-  const items: React.ReactNode[] = [];
-
-  for (const frame of events) {
-    const ev = frame.event as { type: string; [key: string]: unknown };
-
-    if (ev.type === 'session_started') {
-      const prompt = ev.prompt as string | undefined;
-      items.push(
-        <View key={`ss-${frame.seq}`} style={evStyles.dividerRow}>
-          <View style={evStyles.dividerLine} />
-          <Text style={evStyles.dividerLabel}>session</Text>
-          <View style={evStyles.dividerLine} />
-        </View>
-      );
-      if (prompt) {
-        items.push(
-          <View key={`up-${frame.seq}`} style={evStyles.userBubble}>
-            <Text selectable style={evStyles.userText}>{prompt}</Text>
-          </View>
-        );
-      }
-      continue;
-    }
-
-    if (ev.type === 'session_ended') {
-      const ok = ev.ok as boolean | undefined;
-      items.push(
-        <View key={`se-${frame.seq}`} style={evStyles.dividerRow}>
-          <View style={evStyles.dividerLine} />
-          <Text style={[evStyles.dividerLabel, ok ? evStyles.doneLabel : evStyles.failLabel]}>
-            {ok ? 'done' : 'failed'}
-          </Text>
-          <View style={evStyles.dividerLine} />
-        </View>
-      );
-      continue;
-    }
-
-    if (ev.type === 'assistant') {
-      const msg = ev.message as { content?: Array<{ type: string; text?: string }> } | undefined;
-      const content = msg?.content ?? [];
-      for (let i = 0; i < content.length; i++) {
-        const block = content[i];
-        if (block.type === 'text' && block.text?.trim()) {
-          items.push(
-            <Text key={`at-${frame.seq}-${i}`} selectable style={evStyles.assistantText}>
-              {block.text}
-            </Text>
-          );
-        } else if (block.type === 'tool_use') {
-          const tb = block as { type: string; name?: string };
-          items.push(
-            <View key={`tc-${frame.seq}-${i}`} style={evStyles.toolRow}>
-              <Text style={evStyles.toolCheck}>✓</Text>
-              <Text style={evStyles.toolName}>{tb.name ?? 'tool'}</Text>
-            </View>
-          );
-        }
-      }
-      continue;
-    }
-
-    if (ev.type === 'result') {
-      const result = ev.result as string | undefined;
-      if (result?.trim()) {
-        items.push(
-          <Text key={`r-${frame.seq}`} selectable style={evStyles.resultText}>
-            {result.length > 500 ? result.slice(0, 500) + '…' : result}
-          </Text>
-        );
-      }
-    }
-  }
-
-  return (
-    <ScrollView style={evStyles.scroll} contentContainerStyle={evStyles.content}>
-      {items}
-    </ScrollView>
-  );
-}
-
-const evStyles = StyleSheet.create({
-  scroll: { flex: 1 },
-  content: { padding: 12, gap: 8 },
-  empty: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
-  emptyText: { color: '#71717a', fontSize: 13 },
-  dividerRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginVertical: 4 },
-  dividerLine: { flex: 1, height: 1, backgroundColor: '#1e1e1e' },
-  dividerLabel: { color: '#6b7280', fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.6 },
-  doneLabel: { color: '#4ade80' },
-  failLabel: { color: '#f87171' },
-  userBubble: {
-    alignSelf: 'flex-end',
-    backgroundColor: '#0f172a',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#1e3a5f',
-    padding: 10,
-    maxWidth: '88%',
-  },
-  userText: { color: '#93c5fd', fontSize: 13, lineHeight: 18 },
-  assistantText: { color: '#d4d4d8', fontSize: 13, lineHeight: 20 },
-  toolRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  toolCheck: { color: '#4ade80', fontSize: 11 },
-  toolName: { color: '#93c5fd', fontSize: 12, fontWeight: '600', fontFamily: Platform.OS === 'android' ? 'monospace' : 'Menlo' },
-  resultText: { color: '#a3a3a3', fontSize: 12, lineHeight: 18, fontFamily: Platform.OS === 'android' ? 'monospace' : 'Menlo' },
-});
 
 export function SessionHistoryScreen({
   visible,
@@ -223,7 +106,7 @@ export function SessionHistoryScreen({
                     pastSessions.find(s => s.session_id === selectedId)?.started_at ?? 0
                   )}
                 </Text>
-                <HistoryEventList events={selectedEvents} />
+                <EventLog events={selectedEvents} />
               </>
             ) : (
               <View style={styles.emptyPanel}>

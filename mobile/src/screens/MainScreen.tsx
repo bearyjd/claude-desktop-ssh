@@ -38,6 +38,8 @@ interface MainScreenProps {
   onKill: (sessionId?: string) => void;
   onSendInput: (text: string) => void;
   onRequestNotifyConfig: () => void;
+  onSendTestNotification: () => void;
+  testNotificationResult: 'idle' | 'sent' | 'failed';
   listDir: (path: string, cb: (ev: DirListingEvent) => void) => void;
   skills: SkillInfo[];
   onListSkills: () => void;
@@ -86,6 +88,8 @@ export function MainScreen({
   onKill,
   onSendInput,
   onRequestNotifyConfig,
+  onSendTestNotification,
+  testNotificationResult,
   listDir,
   skills,
   onListSkills,
@@ -205,6 +209,8 @@ export function MainScreen({
         onClose={() => setSettingsVisible(false)}
         notifyConfig={notifyConfig}
         onRequestNotifyConfig={onRequestNotifyConfig}
+        onSendTestNotification={onSendTestNotification}
+        testNotificationResult={testNotificationResult}
         skills={skills}
         onListSkills={onListSkills}
         onRunSkill={(prompt) => { onRun(prompt); setSettingsVisible(false); }}

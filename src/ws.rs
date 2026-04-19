@@ -309,6 +309,25 @@ async fn handle_ws(
                                 if sink.send(Message::Text(reply)).await.is_err() {
                                     break;
                                 }
+                            } else if msg_type == "send_test_notification" {
+                                let notify_cfg = cfg.notify.clone();
+                                let result = crate::notify::NotifyClient::new(&notify_cfg)
+                                    .publish("clauded test", "Mobile onboarding test", "default", &["bell"])
+                                    .await;
+                                let reply = match result {
+                                    Ok(()) => serde_json::to_string(&serde_json::json!({
+                                        "type": "test_notification_sent",
+                                        "ok": true,
+                                    })).unwrap_or_default(),
+                                    Err(e) => serde_json::to_string(&serde_json::json!({
+                                        "type": "test_notification_sent",
+                                        "ok": false,
+                                        "error": e.to_string(),
+                                    })).unwrap_or_default(),
+                                };
+                                if sink.send(Message::Text(reply)).await.is_err() {
+                                    break;
+                                }
                             } else if msg_type == "list_skills" {
                                 let home = std::env::var("HOME").unwrap_or_default();
                                 let skills_dir = std::path::PathBuf::from(&home).join(".claude/skills");
