@@ -20,6 +20,7 @@ use crate::{BufferedDecisions, Decision, PendingApprovals, Sessions};
 /// Broadcast channel payload: (seq, unix_ts, raw_json_string)
 pub type EventTx = broadcast::Sender<(i64, f64, String)>;
 
+#[allow(clippy::too_many_arguments)]
 pub async fn serve(
     port: u16,
     token: String,

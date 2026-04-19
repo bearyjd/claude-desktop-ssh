@@ -18,6 +18,7 @@ use tokio::sync::oneshot;
 const MAX_PAYLOAD: usize = 65_536; // 64 KiB
 const SKIP_PERMISSIONS_FLAG: &str = "--dangerously-skip-permissions";
 
+#[allow(clippy::too_many_arguments)]
 pub async fn spawn_and_process(
     prompt: &str,
     container: Option<&str>,
@@ -176,7 +177,7 @@ pub async fn spawn_and_process(
         let _ = events_tx.send((seq, now, enriched));
 
         event_count += 1;
-        if event_count % 100 == 0 {
+        if event_count.is_multiple_of(100) {
             let db_ref = db.clone();
             tokio::task::spawn_blocking(move || {
                 let conn = db_ref.lock().unwrap();
