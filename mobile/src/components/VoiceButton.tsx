@@ -8,7 +8,18 @@ import {
   type ExpoSpeechRecognitionResultEvent,
 } from 'expo-speech-recognition';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Animated, Linking, Modal, PermissionsAndroid, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+
+// PTT max hold — Soda starts to misbehave past a few minutes; cap to 3.
+const MAX_RECORDING_MS = 3 * 60 * 1000;
+// Android 16 fix: Soda's default LANGUAGE_MODEL flipped to AMBIENT_ONESHOT
+// after the Sept 2025 security patch. Without web_search, dictation returns
+// empty transcripts. See ./docs/learnings or memory/android16-stt-soda-ambient-fix.md.
+const SODA_DICTATION_MODEL = 'web_search';
+// Pixel devices have settings:secure:voice_recognition_service = null, so an
+// unpinned createSpeechRecognizer() throws code 5. com.google.android.tts is
+// the only package that actually exposes a RecognitionService on Pixel today.
+const DEFAULT_RECOGNIZER_PKG = 'com.google.android.tts';
 
 export const STT_ENGINE_KEY = 'stt_engine';
 export const STT_RECOGNIZER_PKG_KEY = 'stt_recognizer_pkg';
@@ -262,6 +273,24 @@ export function VoiceButton({ onTranscript, disabled }: VoiceButtonProps) {
   // flowed and skips the hang handler.
   const audioSeenRef = useRef(false);
 
+  // ── PTT (push-to-talk) state ────────────────────────────────────────────
+  // True while the user's finger is on the button. Async paths must check
+  // this between awaits so a release in flight aborts the start.
+  const pressActiveRef = useRef(false);
+  // Per-utterance final segments, joined into the composed transcript.
+  // continuous: true emits multiple isFinal results during a hold (Soda
+  // re-arms after each utterance boundary); we accumulate, then flush on
+  // release as a single isFinal=true callback.
+  const finalSegmentsRef = useRef<string[]>([]);
+  // Latest in-progress (isFinal=false) transcript for the current utterance.
+  const interimRef = useRef('');
+  // Which engine the active hold is using — used by handlePressOut to route
+  // to stopOnDevice or finishWhisper without re-reading AsyncStorage.
+  const activeEngineRef = useRef<'ondevice' | 'whisper' | null>(null);
+  // Safety cap timer — auto-releases at MAX_RECORDING_MS so a stuck
+  // touch state can't pin the mic open forever.
+  const maxDurationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Note: com.google.android.tts is intentionally NOT blacklisted. expo-speech-recognition
   // docs explicitly list it as a valid getDefaultRecognitionService() return on some devices.
   const KNOWN_BAD_PKGS: string[] = [];
@@ -296,6 +325,7 @@ export function VoiceButton({ onTranscript, disabled }: VoiceButtonProps) {
       if (errTimeout.current) { clearTimeout(errTimeout.current); errTimeout.current = null; }
       if (ring2Timeout.current) { clearTimeout(ring2Timeout.current); ring2Timeout.current = null; }
       if (watchdogRef.current) { clearTimeout(watchdogRef.current); watchdogRef.current = null; }
+      if (maxDurationTimer.current) { clearTimeout(maxDurationTimer.current); maxDurationTimer.current = null; }
       pulseLoop.current?.stop(); pulseLoop.current = null;
       ring1Loop.current?.stop(); ring1Loop.current = null;
       ring2Loop.current?.stop(); ring2Loop.current = null;
@@ -457,29 +487,51 @@ export function VoiceButton({ onTranscript, disabled }: VoiceButtonProps) {
   const stopListeningRef = useRef(stopListening);
   useEffect(() => { stopListeningRef.current = stopListening; });
 
-  // Fires the native recognizer. Shared by the initial tap, post-detection auto-start,
-  // and picker auto-start — all three paths share the same start options.
+  // PTT helpers ───────────────────────────────────────────────────────────
+  const composeText = useCallback(() => {
+    const finals = finalSegmentsRef.current.join(' ').trim();
+    const interim = interimRef.current.trim();
+    if (finals && interim) return `${finals} ${interim}`;
+    return finals || interim;
+  }, []);
+
+  const resetAccumulator = useCallback(() => {
+    finalSegmentsRef.current = [];
+    interimRef.current = '';
+  }, []);
+
+  const clearMaxTimer = useCallback(() => {
+    if (maxDurationTimer.current) {
+      clearTimeout(maxDurationTimer.current);
+      maxDurationTimer.current = null;
+    }
+  }, []);
+
+  // Fires the native recognizer. Shared by the PTT press-in path, post-detection
+  // auto-start, and picker auto-start — all share the same start options.
   //
-  // Pairing EXTRA_PREFER_OFFLINE or requiresOnDeviceRecognition with a cloud-only
-  // recognizer package is an unsatisfiable request, so the framework rejects
-  // start() without surfacing an error to the JS layer. Only gate on-device hints
-  // when the selected service actually ships an on-device model
-  // (com.google.android.as = Android System Intelligence).
+  // Android 16 (Sept 2025 security patch) flipped Soda's default LANGUAGE_MODEL
+  // to AMBIENT_ONESHOT, which returns empty transcripts for dictation audio.
+  // The fix is to ALWAYS pin com.google.android.tts as the recognizer (Pixel's
+  // settings:secure:voice_recognition_service is null by default, so unpinned
+  // createSpeechRecognizer() throws code 5) AND to pass EXTRA_LANGUAGE_MODEL=
+  // 'web_search' so Soda routes through the dictation pipeline.
+  //
+  // Do NOT reintroduce requiresOnDeviceRecognition or EXTRA_PREFER_OFFLINE here:
+  // both fail or are silently ignored on Android 16. See memory/android16-stt-soda-ambient-fix.md.
   const startRecognizerRef = useRef(async (pkg: string | null) => {
-    const isOnDevicePkg = pkg === 'com.google.android.as';
-    const lang = await pickBestLocale(pkg);
-    logEventRef.current('start.request', { pkg: pkg ?? '(default)', lang });
+    const effectivePkg = pkg && pkg.length > 0 ? pkg : DEFAULT_RECOGNIZER_PKG;
+    const lang = await pickBestLocale(effectivePkg);
+    if (!pressActiveRef.current && activeEngineRef.current === 'ondevice') return;
+    logEventRef.current('start.request', { pkg: effectivePkg, lang });
     try {
       ExpoSpeechRecognitionModule.start({
         lang,
         interimResults: true,
         maxAlternatives: 1,
-        continuous: false,
-        requiresOnDeviceRecognition: isOnDevicePkg,
-        ...(isOnDevicePkg
-          ? { androidIntentOptions: { EXTRA_PREFER_OFFLINE: true } }
-          : {}),
-        ...(pkg ? { androidRecognitionServicePackage: pkg } : {}),
+        continuous: true,
+        androidRecognitionServicePackage: effectivePkg,
+        androidIntentOptions: { EXTRA_LANGUAGE_MODEL: SODA_DICTATION_MODEL },
       });
       started.current = true;
       setIsListening(true);
@@ -551,8 +603,19 @@ export function VoiceButton({ onTranscript, disabled }: VoiceButtonProps) {
         logEventRef.current('result', { isFinal: event.isFinal, len: transcript?.length ?? 0 });
         audioSeenRef.current = true;
         clearWatchdogRef.current();
-        if (transcript) onTranscriptRef.current(transcript, event.isFinal);
-        if (event.isFinal) stopListeningRef.current();
+        if (!transcript) return;
+        // PTT accumulator: continuous: true emits multiple isFinal results
+        // (one per utterance boundary). We collect finals and overwrite the
+        // interim slot, then emit the composed text as a non-final update so
+        // MainScreen shows the in-progress transcript without committing.
+        // The single final commit happens in the 'end' listener (on release).
+        if (event.isFinal) {
+          finalSegmentsRef.current.push(transcript);
+          interimRef.current = '';
+        } else {
+          interimRef.current = transcript;
+        }
+        onTranscriptRef.current(composeText(), false);
       }
     );
     // Lifecycle listeners. expo-speech-recognition emits these on Android;
@@ -662,6 +725,12 @@ export function VoiceButton({ onTranscript, disabled }: VoiceButtonProps) {
     const endSub = ExpoSpeechRecognitionModule.addListener('end', () => {
       logEventRef.current('end');
       clearWatchdogRef.current();
+      // PTT flush: commit the composed transcript as a single isFinal=true
+      // emission, then clear the accumulator. The session ends here whether
+      // the user released, the watchdog fired, or Soda closed itself.
+      const text = composeText();
+      if (text) onTranscriptRef.current(text, true);
+      resetAccumulator();
       stopListeningRef.current();
     });
 
@@ -699,12 +768,35 @@ export function VoiceButton({ onTranscript, disabled }: VoiceButtonProps) {
     showErrRef.current('Switched to Whisper. Add API key in Settings.', 3000);
   };
 
-  // ── On-device (Android SpeechRecognizer) ────────────────────────────────────
+  // ── Permission helper ───────────────────────────────────────────────────
+  // expo-speech-recognition's requestPermissionsAsync hangs forever on
+  // Android 16; use RN core PermissionsAndroid for the on-device path.
+  const requestRecordAudio = useCallback(async (): Promise<boolean> => {
+    if (Platform.OS !== 'android') {
+      const { granted } = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+      return granted;
+    }
+    try {
+      const result = await PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+        {
+          title: 'Microphone',
+          message: 'Relay needs the microphone to transcribe your voice.',
+          buttonPositive: 'OK',
+        },
+      );
+      return result === PermissionsAndroid.RESULTS.GRANTED;
+    } catch {
+      return false;
+    }
+  }, []);
 
-  const handlePressOnDevice = async () => {
-    if (isListening) { stopListening(); return; }
+  // ── On-device PTT (Android SpeechRecognizer) ────────────────────────────
+
+  const startOnDevice = useCallback(async () => {
     setErrMsg('');
-    const { granted } = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+    const granted = await requestRecordAudio();
+    if (!pressActiveRef.current) return;
     if (!granted) {
       showErrRef.current(
         'Microphone permission is required for voice input.\nIf the system dialog did not appear, enable it manually in App Settings.',
@@ -713,65 +805,31 @@ export function VoiceButton({ onTranscript, disabled }: VoiceButtonProps) {
       return;
     }
     const pkg = await AsyncStorage.getItem(STT_RECOGNIZER_PKG_KEY);
-    // Fresh session — reset the chain and the detection-ran flag so the
-    // error handler can re-seed from a new scan if the first attempt fails.
+    if (!pressActiveRef.current) return;
     failoverChainRef.current = [];
     detectionRanRef.current = false;
+    resetAccumulator();
     await startRecognizerRef.current(pkg);
-  };
+  }, [requestRecordAudio, resetAccumulator]);
 
-  // ── Whisper API ──────────────────────────────────────────────────────────────
-
-  const handlePressWhisper = async () => {
-    if (isListening) {
-      const rec = whisperRecording.current;
-      if (!rec) { setIsListening(false); stopPulse(); return; }
-      whisperRecording.current = null;
-      started.current = false;
-      setIsListening(false);
-      stopPulse();
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      try {
-        await rec.stopAndUnloadAsync();
-        const uri = rec.getURI();
-        if (!uri) { showErrRef.current('no audio'); return; }
-        const [apiKey, endpoint] = await Promise.all([
-          AsyncStorage.getItem(WHISPER_API_KEY_STORAGE),
-          AsyncStorage.getItem(WHISPER_ENDPOINT_KEY),
-        ]);
-        const key = apiKey?.trim() ?? '';
-        const ep = endpoint?.trim() || DEFAULT_WHISPER_ENDPOINT;
-        if (!key) { showErrRef.current('Whisper API key not set.\nGo to Settings → Voice Input to add your key.', 0, true); return; }
-        showErrRef.current('Transcribing…', 30000);
-        const form = new FormData();
-        form.append('file', { uri, name: 'audio.m4a', type: 'audio/m4a' } as unknown as Blob);
-        form.append('model', 'whisper-1');
-        const resp = await fetch(ep, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${key}` },
-          body: form,
-        });
-        setErrMsg('');
-        if (!resp.ok) {
-          const txt = await resp.text().catch(() => resp.statusText);
-          const detail = txt.slice(0, 120);
-          showErrRef.current(`Whisper error ${resp.status}: ${detail}`, 0, true);
-          return;
-        }
-        const data = await resp.json() as { text?: string };
-        const text = data.text?.trim();
-        if (text) onTranscriptRef.current(text, true);
-      } catch (e: unknown) {
-        setErrMsg('');
-        const msg = e instanceof Error ? e.message : String(e);
-        showErrRef.current(msg.slice(0, 60));
-      }
-      return;
+  const stopOnDevice = useCallback(() => {
+    // The 'end' listener flushes the composed transcript, so we just need to
+    // ask Soda to wrap up. stopListening() is called from the end listener.
+    if (started.current) {
+      try { ExpoSpeechRecognitionModule.stop(); } catch { /* ignore */ }
+    } else {
+      // Race: user released before Soda started. Nothing to flush; clear.
+      resetAccumulator();
     }
+  }, [resetAccumulator]);
 
+  // ── Whisper API PTT ─────────────────────────────────────────────────────
+
+  const startWhisper = useCallback(async () => {
     setErrMsg('');
     try {
       const { granted } = await Audio.requestPermissionsAsync();
+      if (!pressActiveRef.current) return;
       if (!granted) {
         showErrRef.current(
           'Microphone permission is required for voice input.\nIf the system dialog did not appear, enable it manually in App Settings.',
@@ -780,7 +838,13 @@ export function VoiceButton({ onTranscript, disabled }: VoiceButtonProps) {
         return;
       }
       await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+      if (!pressActiveRef.current) return;
       const { recording } = await Audio.Recording.createAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+      if (!pressActiveRef.current) {
+        // Released mid-setup. Tear down the just-created recording.
+        try { await recording.stopAndUnloadAsync(); } catch { /* ignore */ }
+        return;
+      }
       whisperRecording.current = recording;
       started.current = true;
       setIsListening(true);
@@ -790,23 +854,99 @@ export function VoiceButton({ onTranscript, disabled }: VoiceButtonProps) {
       const msg = e instanceof Error ? e.message : String(e);
       showErrRef.current(msg.slice(0, 60));
     }
-  };
+  }, []);
 
-  // ── Router ───────────────────────────────────────────────────────────────────
-
-  const handlePress = async () => {
-    if (detecting) return;
-    // A stale persistent error (e.g. a leftover no-service sheet) would mute
-    // every transient message the next flow produces — so clear it before
-    // dispatching, regardless of whether the sheet is currently visible.
-    errPersistRef.current = false;
-    const engine = await AsyncStorage.getItem(STT_ENGINE_KEY);
-    if (engine === 'whisper') {
-      await handlePressWhisper();
-    } else {
-      await handlePressOnDevice();
+  const finishWhisper = useCallback(async () => {
+    const rec = whisperRecording.current;
+    if (!rec) { setIsListening(false); stopPulse(); return; }
+    whisperRecording.current = null;
+    started.current = false;
+    setIsListening(false);
+    stopPulse();
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    try {
+      await rec.stopAndUnloadAsync();
+      const uri = rec.getURI();
+      if (!uri) { showErrRef.current('no audio'); return; }
+      const [apiKey, endpoint] = await Promise.all([
+        AsyncStorage.getItem(WHISPER_API_KEY_STORAGE),
+        AsyncStorage.getItem(WHISPER_ENDPOINT_KEY),
+      ]);
+      const key = apiKey?.trim() ?? '';
+      const ep = endpoint?.trim() || DEFAULT_WHISPER_ENDPOINT;
+      if (!key) { showErrRef.current('Whisper API key not set.\nGo to Settings → Voice Input to add your key.', 0, true); return; }
+      showErrRef.current('Transcribing…', 30000);
+      const form = new FormData();
+      form.append('file', { uri, name: 'audio.m4a', type: 'audio/m4a' } as unknown as Blob);
+      form.append('model', 'whisper-1');
+      const resp = await fetch(ep, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${key}` },
+        body: form,
+      });
+      setErrMsg('');
+      if (!resp.ok) {
+        const txt = await resp.text().catch(() => resp.statusText);
+        const detail = txt.slice(0, 120);
+        showErrRef.current(`Whisper error ${resp.status}: ${detail}`, 0, true);
+        return;
+      }
+      const data = await resp.json() as { text?: string };
+      const text = data.text?.trim();
+      if (text) onTranscriptRef.current(text, true);
+    } catch (e: unknown) {
+      setErrMsg('');
+      const msg = e instanceof Error ? e.message : String(e);
+      showErrRef.current(msg.slice(0, 60));
     }
-  };
+  }, []);
+
+  // ── PTT router (onPressIn / onPressOut) ─────────────────────────────────
+
+  const handlePressIn = useCallback(async () => {
+    if (detecting || disabled) return;
+    if (pressActiveRef.current) return; // re-entrancy guard
+    pressActiveRef.current = true;
+    errPersistRef.current = false;
+    setErrMsg('');
+    // Safety cap — auto-release if the touch state ever sticks.
+    clearMaxTimer();
+    maxDurationTimer.current = setTimeout(() => {
+      maxDurationTimer.current = null;
+      if (pressActiveRef.current) {
+        logEventRef.current('ptt.max-duration');
+        // Synthesize a release; engine routing reads activeEngineRef.
+        pressActiveRef.current = false;
+        if (activeEngineRef.current === 'whisper') void finishWhisper();
+        else stopOnDevice();
+        activeEngineRef.current = null;
+      }
+    }, MAX_RECORDING_MS);
+
+    const engine = await AsyncStorage.getItem(STT_ENGINE_KEY);
+    if (!pressActiveRef.current) return; // released before engine resolved
+    activeEngineRef.current = engine === 'whisper' ? 'whisper' : 'ondevice';
+    if (activeEngineRef.current === 'whisper') {
+      await startWhisper();
+    } else {
+      await startOnDevice();
+    }
+  }, [detecting, disabled, clearMaxTimer, finishWhisper, stopOnDevice, startWhisper, startOnDevice]);
+
+  const handlePressOut = useCallback(() => {
+    if (!pressActiveRef.current) return;
+    pressActiveRef.current = false;
+    clearMaxTimer();
+    const engine = activeEngineRef.current;
+    activeEngineRef.current = null;
+    if (engine === 'whisper') {
+      void finishWhisper();
+    } else if (engine === 'ondevice') {
+      stopOnDevice();
+    }
+    // engine === null means user released before AsyncStorage resolved;
+    // pressActiveRef guard in startOnDevice/startWhisper aborts the start.
+  }, [clearMaxTimer, finishWhisper, stopOnDevice]);
 
   return (
     <View>
@@ -961,7 +1101,8 @@ export function VoiceButton({ onTranscript, disabled }: VoiceButtonProps) {
         )}
         <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
           <Pressable
-            onPress={handlePress}
+            onPressIn={handlePressIn}
+            onPressOut={handlePressOut}
             disabled={disabled || detecting}
             style={({ pressed }: { pressed: boolean }) => [
               styles.btn,
