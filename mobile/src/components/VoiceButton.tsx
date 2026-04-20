@@ -662,6 +662,21 @@ export function VoiceButton({ onTranscript, disabled }: VoiceButtonProps) {
         lastErrorRef.current = `code=${code} error=${event.error}${nativeMsg ? ' msg=' + nativeMsg : ''}`;
         logEventRef.current('error', { code, error: event.error });
 
+        // Guard: only run detection/failover when the user is actively in a session.
+        // With continuous: true, expo-speech-recognition restarts the recognizer
+        // internally between utterances. The `end` handler fires first (resetting
+        // pressActiveRef), then the restart error arrives — these background errors
+        // must not clear the saved pkg or trigger detection, or the second tap
+        // finds no service. Show a brief transient error and exit.
+        if (!pressActiveRef.current) {
+          if (code !== 6) { // code 6 = no speech detected, expected/silent
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const rawMsg = `${event.error}${(event as any).message ? ': ' + (event as any).message : ''} (code ${code})`;
+            showErrRef.current(sttErrorMessage(code, rawMsg), 4000);
+          }
+          return;
+        }
+
         // 1. Failover: try the next candidate in the chain before giving up
         //    or re-running detection. Applies to language/server-availability
         //    errors AND no-service errors (5/7) — a picker-driven selection
@@ -687,10 +702,10 @@ export function VoiceButton({ onTranscript, disabled }: VoiceButtonProps) {
             return;
           }
           if (savedPkg === null && savedLabel !== null) {
-            showErrRef.current(
-              'No working speech service found.\nInstall one below, or switch to Whisper API.',
-              0, true, 'no-service',
-            );
+            // Stale label with no pkg (e.g. user previously picked System Default,
+            // which clears pkg but sets label). Clear it and re-detect fresh.
+            await AsyncStorage.removeItem(STT_RECOGNIZER_LABEL_KEY);
+            await triggerDetectionRef.current();
             return;
           }
           await AsyncStorage.removeItem(STT_RECOGNIZER_PKG_KEY);
@@ -736,6 +751,17 @@ export function VoiceButton({ onTranscript, disabled }: VoiceButtonProps) {
       const text = composeText();
       if (text) onTranscriptRef.current(text, true);
       resetAccumulator();
+      // When Soda closes itself (service drop, timeout, continuous-mode
+      // session end), pressActiveRef is still true from handlePressIn.
+      // The re-entrancy guard in handlePressIn blocks the next tap unless
+      // we clear it here. Safe to do unconditionally — for user-initiated
+      // stops handlePressOut already cleared these before stop() was called.
+      pressActiveRef.current = false;
+      activeEngineRef.current = null;
+      if (maxDurationTimer.current) {
+        clearTimeout(maxDurationTimer.current);
+        maxDurationTimer.current = null;
+      }
       stopListeningRef.current();
     });
 
@@ -1011,6 +1037,7 @@ export function VoiceButton({ onTranscript, disabled }: VoiceButtonProps) {
             <Text style={styles.errSheetTitle}>
               {errPersist ? '⚠️ Voice Input' : 'ℹ️ Voice Input'}
             </Text>
+            <ScrollView style={styles.errSheetScroll} showsVerticalScrollIndicator={false}>
             {errAction === 'diag' ? (
               <ScrollView style={styles.diagScroll}>
                 <Text style={styles.diagText}>{errMsg}</Text>
@@ -1099,6 +1126,7 @@ export function VoiceButton({ onTranscript, disabled }: VoiceButtonProps) {
                 </Pressable>
               </View>
             )}
+            </ScrollView>
             <Pressable style={styles.errSheetBtn} onPress={dismissErr}>
               <Text style={styles.errSheetBtnText}>
                 {errAction === 'none' ? 'Got it' : 'Dismiss'}
@@ -1200,8 +1228,9 @@ const styles = StyleSheet.create({
   },
   sheet: {
     backgroundColor: '#111', borderTopLeftRadius: 16, borderTopRightRadius: 16,
-    padding: 24, paddingBottom: 40, gap: 12,
+    padding: 24, paddingBottom: 40, gap: 12, maxHeight: '85%',
   },
+  errSheetScroll: { flexShrink: 1 },
   sheetTitle: { color: '#f0f0f0', fontSize: 17, fontWeight: '700' },
   sheetSub: { color: '#666', fontSize: 13, marginBottom: 4 },
   sheetOption: {
