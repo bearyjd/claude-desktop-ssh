@@ -176,4 +176,138 @@ Ground rules
   for the auth / secure-store / camera surfaces.
 
 Start with Phase 1. Plan it out loud first, then implement.
+
+================================================================================
+PHASE 8 — Land the untracked PRP plans
+================================================================================
+
+Six PRP plans exist under .claude/PRPs/plans/ but are not in ROADMAP.md. Read
+each plan file and ship them in this order (one branch + PR per plan). Update
+ROADMAP.md alongside each.
+
+Order (by ratio of user value to scope):
+
+1. session-ux-improvements.plan.md — 5-min lock grace period, fresh-connect
+   view, directory picker wired up. Three small papercuts, ship first.
+2. smart-approval-ux.plan.md — batch approve/deny, quick-response button
+   detection, per-hunk diff accept. Competitive-critical vs. Warp/Nimbalyst.
+3. secrets-management.plan.md — encrypted SQLite vault, AES-256-GCM, per-
+   session env injection. Depends on Phase 1 auth landing first (share the
+   same key-derivation story where possible).
+4. prompt-library-templates.plan.md — saved-prompt CRUD + PromptLibraryScreen.
+   Wire into session-start so saved prompts show as a picker.
+5. file-browser-config-editor.plan.md — read_file/write_file WS restricted to
+   `.claude/`, FileBrowserScreen + ConfigEditor. Must NOT allow writes outside
+   `.claude/` even with a relative-path escape.
+6. session-search-kanban-indicators.plan.md — FTS5 over events, unread badges,
+   kanban view. Requires a db migration; ship a one-shot backfill.
+
+Do not combine plans into a single PR even if they're small — each has its own
+acceptance story.
+
+================================================================================
+PHASE 9 — Operational primitives (logging, health, rate limits)
+================================================================================
+
+These are missing from both code and plans. They are table stakes for anyone
+actually running navetted as a daemon (systemd, docker, k8s).
+
+Implement:
+- Structured logging via `tracing` + `tracing-subscriber`. Log to stdout (for
+  systemd/journalctl) AND a rotating file at `~/.local/state/navetted/log/`
+  (use `tracing-appender` with daily rotation, keep 14 days).
+- Replace every `eprintln!` / `println!` in src/ with `tracing::info!` /
+  `tracing::warn!` / `tracing::error!` with span context (session_id where
+  available).
+- HTTP health endpoint `GET /healthz` on the same listener (serves 200 OK +
+  JSON with version, uptime, active_sessions, pending_approvals). No auth.
+- HTTP readiness `GET /readyz` that also checks SQLite is writeable.
+- Per-connection rate limit on the WS: token bucket, default 30 messages / 10s
+  per connection. Exceeding closes with code 4429. Configurable via
+  `[limits] ws_messages_per_10s` in navetted.toml.
+- Global cap: reject new WS connections past `max_ws_connections` (default 10)
+  with code 4503 and a `server_full` event.
+
+Tests: rate-limit cutoff, healthz/readyz shape, log file rotation.
+
+================================================================================
+PHASE 10 — Organization primitives (audit, tags, GC)
+================================================================================
+
+Sessions and approvals currently live in one flat events table with no audit
+lens, no labels, and no cleanup. Fix all three together — they share a
+migration.
+
+Implement:
+- New `audit_log` table: id, ts, actor (device_id FK), action (paired,
+  revoked, approved, denied, auto_denied, policy_added, policy_removed,
+  budget_exceeded, session_started, session_killed), target_id, details_json.
+  Write an entry from every privileged code path. Never delete rows.
+- Settings → Audit Log screen: reverse-chronological list, filter by action.
+- Session labels: new `session_labels` table (session_id, label). WS messages
+  `add_session_label` / `remove_session_label` / `list_session_labels`.
+  SessionCard renders labels as colored chips. Filter pill row by label.
+- `navetted gc` subcommand (from TODOS.md:50): deletes events + session_labels
+  rows for sessions older than `gc_retention_days` (default 30) AND status in
+  DONE/DEAD. Dry-run by default; `--apply` to actually delete. Never deletes
+  audit_log rows.
+- Scheduled nightly GC task in the daemon (3am local), logs results to
+  tracing + audit_log.
+
+Tests: audit row written on every privileged action, GC respects retention +
+status, labels survive GC of unrelated sessions.
+
+================================================================================
+PHASE 11 — Extension surface (webhooks + MCP)
+================================================================================
+
+navette's moat is self-hosted + agent-agnostic. Double down on extensibility.
+
+Implement:
+- Webhooks: `[webhooks]` config section with N named endpoints, each with
+  url, secret (HMAC-SHA256), and event filter list. Fire on session_started,
+  session_ended, approval_pending, approval_decided, budget_warning,
+  budget_exceeded. Signed body: `X-Navette-Signature: sha256=...`.
+- Settings → Webhooks screen: add/remove/test endpoint, last-delivery status.
+- MCP server registry: new `mcp_servers` table (name, command, args_json,
+  env_json, enabled, last_health_ok, last_health_at). Daemon spawns enabled
+  MCP servers as child processes, proxies stdio to the active Claude session
+  via the agent's MCP config. `list_mcp_servers`, `add_mcp_server`,
+  `toggle_mcp_server`, `remove_mcp_server` WS messages.
+- Settings → MCP Servers screen: list, enable toggle, health dot, add form.
+
+Tests: webhook HMAC verification, MCP server process lifecycle (spawn,
+health-check, restart on crash, clean shutdown on daemon exit).
+
+================================================================================
+PHASE 12 — Multi-user / team (STRATEGIC — ask me before starting)
+================================================================================
+
+This is a direction decision, not just work. Before starting Phase 12, STOP
+and ask me whether navette should remain single-user or become multi-tenant.
+If yes, the sketch is:
+
+- Users table (id, display_name, created_at).
+- Paired devices belong to a user.
+- Sessions belong to a user.
+- Roles: owner | collaborator | viewer. Approvals require collaborator+.
+- Mobile: identity switcher at the top of the settings screen.
+
+Non-goal: SSO/OIDC integration in the first pass — keep it device-pairing-
+based. The point is to share a household daemon between a laptop's user and
+a partner's phone without giving them the same bearer token.
+
+================================================================================
+PHASE 13 — Desktop + distribution polish (decide in/out)
+================================================================================
+
+- Tauri desktop app from TODOS.md:36. Three-panel layout (sessions / chat /
+  diff). Share `mobile/src/` components where possible. Decide whether desktop
+  is in scope before starting — skipping is a valid answer.
+- iOS App Store submission per ROADMAP.md:138 (done naturally during Phase 6).
+- Android `.aab` signed release per .claude/PRPs/plans/android-aab-release-
+  build.plan.md. Follow that plan verbatim.
+- CI release pipeline per TODOS.md:44: on tag push, `cargo build --release`
+  for linux/amd64 + linux/arm64 (via `cross`), attach to GitHub Release.
+  EAS build for mobile (separate workflow).
 ```
