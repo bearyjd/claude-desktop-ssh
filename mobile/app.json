@@ -36,7 +36,8 @@
           ]
         }
       ],
-      "./plugins/withSpeechRecognitionQueries"
+      "./plugins/withSpeechRecognitionQueries",
+      "./plugins/withReleaseSigning"
     ]
   }
 }
