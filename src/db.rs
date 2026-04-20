@@ -1,3 +1,6 @@
+// Copyright (C) 2025 Entrevoix, Inc.
+// SPDX-License-Identifier: AGPL-3.0-only
+
 use std::os::unix::fs::PermissionsExt;
 
 use anyhow::{Context, Result};
@@ -279,7 +282,7 @@ pub fn truncate_payload(line: &str) -> String {
 
 fn data_dir() -> Result<std::path::PathBuf> {
     let home = std::env::var("HOME").context("HOME not set")?;
-    Ok(std::path::PathBuf::from(home).join(".local/share/clauded"))
+    Ok(std::path::PathBuf::from(home).join(".local/share/navetted"))
 }
 
 #[cfg(test)]

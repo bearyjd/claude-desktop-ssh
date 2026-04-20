@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "Relay",
-    "slug": "relay-mobile",
+    "name": "navette",
+    "slug": "navette",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -11,8 +11,8 @@
     },
     "ios": {
       "infoPlist": {
-        "NSSpeechRecognitionUsageDescription": "Relay uses speech recognition to transcribe voice prompts.",
-        "NSMicrophoneUsageDescription": "Relay uses the microphone to capture voice prompts."
+        "NSSpeechRecognitionUsageDescription": "navette uses speech recognition to transcribe voice prompts.",
+        "NSMicrophoneUsageDescription": "navette uses the microphone to capture voice prompts."
       }
     },
     "android": {
@@ -20,7 +20,7 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#DA7756"
       },
-      "package": "io.github.bearyjd.relay",
+      "package": "inc.entrevoix.navette",
       "permissions": [
         "android.permission.RECORD_AUDIO"
       ]

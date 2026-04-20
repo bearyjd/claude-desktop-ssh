@@ -1,3 +1,6 @@
+// Copyright (C) 2025 Entrevoix, Inc.
+// SPDX-License-Identifier: AGPL-3.0-only
+
 use std::time::Duration;
 
 use anyhow::Result;

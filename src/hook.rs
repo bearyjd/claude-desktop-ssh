@@ -1,3 +1,6 @@
+// Copyright (C) 2025 Entrevoix, Inc.
+// SPDX-License-Identifier: AGPL-3.0-only
+
 use std::os::unix::fs::PermissionsExt;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -14,7 +17,7 @@ use crate::db;
 use crate::ws::EventTx;
 use crate::{BufferedDecisions, Decision, PendingApprovals};
 
-/// What the clauded-hook binary sends over the socket.
+/// What the navetted-hook binary sends over the socket.
 #[derive(Deserialize)]
 struct HookRequest {
     tool_use_id: String,
@@ -176,7 +179,7 @@ async fn handle_connection(
 
 pub fn socket_dir() -> Result<std::path::PathBuf> {
     let runtime_dir = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".to_string());
-    Ok(std::path::PathBuf::from(runtime_dir).join("clauded"))
+    Ok(std::path::PathBuf::from(runtime_dir).join("navetted"))
 }
 
 /// Persist an event to the DB and broadcast it with the assigned seq number.
@@ -274,7 +277,7 @@ mod tests {
     fn socket_dir_returns_path_under_runtime_dir() {
         use super::socket_dir;
         let dir = socket_dir().unwrap();
-        // Should end with "clauded"
-        assert_eq!(dir.file_name().and_then(|n| n.to_str()), Some("clauded"));
+        // Should end with "navetted"
+        assert_eq!(dir.file_name().and_then(|n| n.to_str()), Some("navetted"));
     }
 }

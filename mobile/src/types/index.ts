@@ -1,3 +1,6 @@
+// Copyright (C) 2025 Entrevoix, Inc.
+// SPDX-License-Identifier: AGPL-3.0-only
+
 export interface EventFrame {
   seq: number;
   ts: number;

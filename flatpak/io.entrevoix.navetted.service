@@ -1,9 +1,9 @@
 [Unit]
-Description=clauded - Remote Claude Code daemon
+Description=navetted - Remote Claude Code daemon
 After=network.target
 
 [Service]
-ExecStart=/usr/bin/flatpak run com.beary.clauded
+ExecStart=/usr/bin/flatpak run io.entrevoix.navetted
 Restart=on-failure
 RestartSec=5
 

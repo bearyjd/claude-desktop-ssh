@@ -1,4 +1,4 @@
-# clauded Roadmap
+# navetted Roadmap
 
 Self-hosted, subscription-free AI agent remote control — a Rust PTY daemon + React Native mobile client.
 
@@ -9,7 +9,7 @@ Self-hosted, subscription-free AI agent remote control — a Rust PTY daemon + R
 ## Shipped
 
 ### Phase 1 — Approval timeout + auto-deny
-- Configurable TTL (`approval_ttl_secs`, `approval_warn_before_secs`) in `clauded.toml`
+- Configurable TTL (`approval_ttl_secs`, `approval_warn_before_secs`) in `navetted.toml`
 - Auto-deny on expiry; `approval_pending`, `approval_warning`, `approval_expired` events
 - Countdown timer in `ApprovalCard` with warning color at ≤30s
 
@@ -143,7 +143,7 @@ Features the daemon supports that mobile does not yet expose:
 
 | Competitor | Self-hosted | No subscription | Android | Multi-agent | Diff review | Watch |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|
-| **clauded** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
+| **navetted** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
 | Anthropic Remote Control | ❌ | ❌ ($100+/mo) | ✅ | ❌ | ❌ | ❌ |
 | AgentsRoom | ❌ | ❌ | ✅ | ✅ | Partial | ❌ |
 | Nimbalyst | ❌ | ❌ | ❌ | Partial | ✅ | ❌ |
@@ -151,4 +151,4 @@ Features the daemon supports that mobile does not yet expose:
 | AgentApprove | Partial | ❌ | ❌ | ✅ | ❌ | ✅ |
 | Moshi | ✅ (SSH) | ✅ | ❌ | ✅ (SSH) | ❌ | ✅ (webhook) |
 
-**clauded's moat**: The only full-featured option requiring no cloud relay, no vendor subscription, and no Apple Push/FCM account. Works with raw API keys, Bedrock, and Vertex. Anthropic Remote Control's $100+/mo paywall and API-key exclusion are the wedge.
+**navetted's moat**: The only full-featured option requiring no cloud relay, no vendor subscription, and no Apple Push/FCM account. Works with raw API keys, Bedrock, and Vertex. Anthropic Remote Control's $100+/mo paywall and API-key exclusion are the wedge.

@@ -1,3 +1,6 @@
+// Copyright (C) 2025 Entrevoix, Inc.
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import React, { useEffect } from 'react';
 import {
   Alert,
@@ -8,7 +11,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import type { SkillInfo } from '../hooks/useClaudedWS';
+import type { SkillInfo } from '../hooks/useNavettedWS';
 
 interface SkillsScreenProps {
   visible: boolean;

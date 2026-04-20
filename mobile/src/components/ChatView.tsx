@@ -1,3 +1,6 @@
+// Copyright (C) 2025 Entrevoix, Inc.
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Pressable,

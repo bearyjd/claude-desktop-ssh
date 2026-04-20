@@ -1,3 +1,6 @@
+// Copyright (C) 2025 Entrevoix, Inc.
+// SPDX-License-Identifier: AGPL-3.0-only
+
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::PathBuf;
 
@@ -183,7 +186,7 @@ fn random_alphanumeric(len: usize) -> String {
 
 fn config_path() -> Result<PathBuf> {
     let home = std::env::var("HOME").context("HOME not set")?;
-    Ok(PathBuf::from(home).join(".config/clauded/config.toml"))
+    Ok(PathBuf::from(home).join(".config/navetted/config.toml"))
 }
 
 #[cfg(test)]

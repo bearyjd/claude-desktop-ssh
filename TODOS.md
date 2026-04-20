@@ -13,7 +13,7 @@
 **Options:**
 - **ntfy.sh** — open-source, self-hostable, native Android app, works over Tailscale. 30-min spike to evaluate. No Google dependency.
 - **FCM** — requires Firebase project + Google Play Services. More work, broader device support.
-**Recommended:** Try ntfy.sh first. Run `ntfy serve` on the home machine, subscribe from Android, have clauded POST when a `PreToolUse` hook fires.
+**Recommended:** Try ntfy.sh first. Run `ntfy serve` on the home machine, subscribe from Android, have navetted POST when a `PreToolUse` hook fires.
 
 ---
 
@@ -27,8 +27,8 @@
 
 ## Multiple sessions / session management
 **What:** Support spawning and attaching to multiple named Claude sessions.
-**Current state:** clauded runs one session per process (prompt as argv[1]). The DB and WS are per-process.
-**Full design:** session spawn/attach protocol, per-session SQLite DBs at `~/.local/share/clauded/{session-id}.db`, session state machine (IDLE → RUNNING → PENDING_APPROVAL → DONE/DEAD), restart on unexpected exit.
+**Current state:** navetted runs one session per process (prompt as argv[1]). The DB and WS are per-process.
+**Full design:** session spawn/attach protocol, per-session SQLite DBs at `~/.local/share/navetted/{session-id}.db`, session state machine (IDLE → RUNNING → PENDING_APPROVAL → DONE/DEAD), restart on unexpected exit.
 **Scope:** Large. Not needed for solo use where one session at a time is fine.
 
 ---
@@ -48,7 +48,7 @@
 ---
 
 ## Session TTL / garbage collection
-**What:** `clauded gc` command (or auto-GC on startup) to delete old session DBs.
+**What:** `navetted gc` command (or auto-GC on startup) to delete old session DBs.
 **Why:** Not needed now; becomes disk noise at 100+ sessions.
-**Approach:** Delete `~/.local/share/clauded/{session-id}.db` for sessions with `status IN ('DEAD','DONE') AND created_at < now - 30days`. Add `--dry-run` flag.
+**Approach:** Delete `~/.local/share/navetted/{session-id}.db` for sessions with `status IN ('DEAD','DONE') AND created_at < now - 30days`. Add `--dry-run` flag.
 **Depends on:** Multiple sessions implementation

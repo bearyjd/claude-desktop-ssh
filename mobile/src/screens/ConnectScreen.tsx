@@ -1,3 +1,6 @@
+// Copyright (C) 2025 Entrevoix, Inc.
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { useEffect, useState } from 'react';
 import {
@@ -25,8 +28,8 @@ interface SavedConfig extends ServerConfig {
   name: string;
 }
 
-const CONFIGS_KEY = 'clauded_saved_configs';
-const LEGACY_KEY = 'clauded_config';
+const CONFIGS_KEY = 'navette_saved_configs';
+const LEGACY_KEY = 'navette_config';
 const TS_API_KEY_STORAGE = 'tailscale_api_key';
 
 interface TsPeer { name: string; ip: string; }
@@ -179,7 +182,7 @@ export function ConnectScreen({ status, onConnect }: ConnectScreenProps) {
     >
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <View style={styles.card}>
-          <Text style={styles.title}>Relay</Text>
+          <Text style={styles.title}>navette</Text>
           <Text style={styles.subtitle}>remote tool approval</Text>
 
           {status === 'error' && (
@@ -265,7 +268,7 @@ export function ConnectScreen({ status, onConnect }: ConnectScreenProps) {
             style={styles.input}
             value={token}
             onChangeText={setToken}
-            placeholder="from ~/.config/clauded/config.toml (token field)"
+            placeholder="from ~/.config/navetted/config.toml (token field)"
             placeholderTextColor="#555"
             autoCapitalize="none"
             autoCorrect={false}

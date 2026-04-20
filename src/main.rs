@@ -1,3 +1,6 @@
+// Copyright (C) 2025 Entrevoix, Inc.
+// SPDX-License-Identifier: AGPL-3.0-only
+
 mod claude;
 mod config;
 mod db;
@@ -231,7 +234,7 @@ async fn main() -> Result<()> {
     // Stdin fallback approvals (useful for debugging without a WS client)
     tokio::spawn(read_stdin_approvals(pending.clone()));
 
-    tracing::info!("clauded ready — waiting for run requests");
+    tracing::info!("navetted ready — waiting for run requests");
 
     // Keep the process alive; all work is driven by spawned tasks.
     std::future::pending::<()>().await;

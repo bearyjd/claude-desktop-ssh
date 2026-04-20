@@ -1,3 +1,6 @@
+// Copyright (C) 2025 Entrevoix, Inc.
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   FlatList,
@@ -16,7 +19,7 @@ import { SessionCard } from '../components/SessionCard';
 import { VoiceButton } from '../components/VoiceButton';
 import { SettingsScreen } from './SettingsScreen';
 import { ConnectionStatus, DirListingEvent, EventFrame, PastSessionInfo, PendingApproval, ScheduledSessionInfo, SessionInfo, SessionStatus } from '../types';
-import type { NotifyConfig, SkillInfo } from '../hooks/useClaudedWS';
+import type { NotifyConfig, SkillInfo } from '../hooks/useNavettedWS';
 
 interface MainScreenProps {
   status: ConnectionStatus;

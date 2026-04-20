@@ -1,4 +1,7 @@
-/// PreToolUse hook binary for clauded.
+// Copyright (C) 2025 Entrevoix, Inc.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+/// PreToolUse hook binary for navetted.
 ///
 /// Claude Code calls this as a subprocess before every tool execution.
 /// We connect to the daemon's Unix socket, forward the tool call, block
@@ -51,14 +54,14 @@ fn main() {
         .enable_all()
         .build()
         .unwrap_or_else(|e| {
-            eprintln!("clauded-hook: failed to build runtime: {e}");
+            eprintln!("navetted-hook: failed to build runtime: {e}");
             process::exit(2);
         });
 
     let exit_code = rt
         .block_on(run(stdin_buf))
         .unwrap_or_else(|e| {
-            eprintln!("clauded-hook: {e:#}");
+            eprintln!("navetted-hook: {e:#}");
             2
         });
 
@@ -72,7 +75,7 @@ fn read_stdin() -> String {
         .lock()
         .read_to_string(&mut buf)
         .unwrap_or_else(|e| {
-            eprintln!("clauded-hook: failed to read stdin: {e}");
+            eprintln!("navetted-hook: failed to read stdin: {e}");
             process::exit(2);
         });
     buf
@@ -90,11 +93,11 @@ async fn run(stdin_buf: String) -> Result<i32> {
         UnixStream::connect(&socket_path),
     )
     .await
-    .context("connect timeout (500ms) — is clauded running?")?
+    .context("connect timeout (500ms) — is navetted running?")?
     .with_context(|| format!("failed to connect to {socket_path}"))?;
 
     // Send request JSON followed by EOF so the daemon knows we're done writing.
-    let session_id = std::env::var("CLAUDED_SESSION_ID").unwrap_or_default();
+    let session_id = std::env::var("NAVETTED_SESSION_ID").unwrap_or_default();
     let request = HookRequest {
         tool_use_id: hook_input.tool_use_id,
         tool_name: hook_input.tool_name,
@@ -126,7 +129,7 @@ async fn run(stdin_buf: String) -> Result<i32> {
         "allow" => Ok(0),
         "deny" => Ok(2),
         other => {
-            eprintln!("clauded-hook: unknown decision '{other}', denying");
+            eprintln!("navetted-hook: unknown decision '{other}', denying");
             Ok(2)
         }
     }
@@ -135,5 +138,5 @@ async fn run(stdin_buf: String) -> Result<i32> {
 fn socket_path() -> String {
     let runtime_dir =
         std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".to_string());
-    format!("{runtime_dir}/clauded/hook.sock")
+    format!("{runtime_dir}/navetted/hook.sock")
 }

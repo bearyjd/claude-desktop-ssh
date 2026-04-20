@@ -1,3 +1,6 @@
+// Copyright (C) 2025 Entrevoix, Inc.
+// SPDX-License-Identifier: AGPL-3.0-only
+
 use std::sync::{
     atomic::{AtomicU64, Ordering},
     Arc, Mutex,
@@ -313,7 +316,7 @@ async fn handle_ws(
                             } else if msg_type == "send_test_notification" {
                                 let notify_cfg = cfg.notify.clone();
                                 let result = crate::notify::NotifyClient::new(&notify_cfg)
-                                    .publish("clauded test", "Mobile onboarding test", "default", &["bell"])
+                                    .publish("navetted test", "Mobile onboarding test", "default", &["bell"])
                                     .await;
                                 let reply = match result {
                                     Ok(()) => serde_json::to_string(&serde_json::json!({

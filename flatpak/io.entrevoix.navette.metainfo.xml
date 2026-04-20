@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="console-application">
+  <id>io.entrevoix.navette</id>
+  <name>navette</name>
+  <summary>Mobile-first interface for Claude Code</summary>
+  <description>
+    <p>navetted is a daemon that exposes a Claude Code session over a WebSocket,
+    enabling remote control, tool approval, and live output streaming from a
+    mobile device or any WebSocket client.</p>
+  </description>
+  <url type="homepage">https://github.com/Entrevoix/navette</url>
+  <metadata_license>AGPL-3.0-only</metadata_license>
+  <project_license>AGPL-3.0-only</project_license>
+  <releases>
+    <release version="0.1.0" date="2026-04-18"/>
+  </releases>
+</component>

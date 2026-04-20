@@ -1,8 +1,11 @@
+// Copyright (C) 2025 Entrevoix, Inc.
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { EventFrame, PendingApproval, ConnectionStatus, ServerConfig, SessionStatus, SessionInfo, AssistantEvent, ToolUseBlock, DirListingEvent, PastSessionInfo, ScheduledSessionInfo, TestNotificationSentEvent } from '../types';
 
-const LAST_SEQ_KEY = 'clauded_last_seq';
+const LAST_SEQ_KEY = 'navette_last_seq';
 
 const CLIENT_ID = `mobile-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -16,7 +19,7 @@ export interface SkillInfo {
   description: string;
 }
 
-interface UseClaudedWSResult {
+interface UseNavettedWSResult {
   status: ConnectionStatus;
   sessionStatus: SessionStatus;
   sessions: SessionInfo[];
@@ -52,7 +55,7 @@ interface UseClaudedWSResult {
   listScheduledSessions: () => void;
 }
 
-export function useClaudedWS(): UseClaudedWSResult {
+export function useNavettedWS(): UseNavettedWSResult {
   const [status, setStatus] = useState<ConnectionStatus>('disconnected');
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);

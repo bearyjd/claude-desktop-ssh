@@ -3,7 +3,7 @@ Description=Relay — remote Claude Code session gateway
 After=network.target
 
 [Service]
-ExecStart=/app/bin/clauded
+ExecStart=/app/bin/navetted
 Restart=on-failure
 RestartSec=5s
 

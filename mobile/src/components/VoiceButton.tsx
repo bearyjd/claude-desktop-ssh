@@ -1,3 +1,6 @@
+// Copyright (C) 2025 Entrevoix, Inc.
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Audio } from 'expo-av';
 import * as Clipboard from 'expo-clipboard';
@@ -119,7 +122,7 @@ async function collectDiagnostics(
 ): Promise<string> {
   const lines: string[] = [];
   const ts = new Date().toISOString();
-  lines.push(`Relay voice diagnostics @ ${ts}`);
+  lines.push(`navette voice diagnostics @ ${ts}`);
   lines.push('');
   // getSpeechRecognitionServices
   try {

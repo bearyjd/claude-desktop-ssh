@@ -1,3 +1,6 @@
+// Copyright (C) 2025 Entrevoix, Inc.
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Clipboard from 'expo-clipboard';
 import React, { useEffect, useState } from 'react';
@@ -15,7 +18,7 @@ import { DEFAULT_WHISPER_ENDPOINT, STT_ENGINE_KEY, STT_RECOGNIZER_LABEL_KEY, STT
 import { ScheduleScreen } from './ScheduleScreen';
 import { SessionHistoryScreen } from './SessionHistoryScreen';
 import { SkillsScreen } from './SkillsScreen';
-import type { SkillInfo } from '../hooks/useClaudedWS';
+import type { SkillInfo } from '../hooks/useNavettedWS';
 import type { EventFrame, PastSessionInfo, ScheduledSessionInfo } from '../types';
 
 const TS_API_KEY_STORAGE = 'tailscale_api_key';

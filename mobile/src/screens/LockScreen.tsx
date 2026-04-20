@@ -1,9 +1,12 @@
+// Copyright (C) 2025 Entrevoix, Inc.
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-const PIN_KEY = 'clauded_pin';
+const PIN_KEY = 'navette_pin';
 const PIN_NONE = 'none';
 
 interface LockScreenProps {
@@ -38,7 +41,7 @@ export function LockScreen({ onUnlock }: LockScreenProps) {
       const isEnrolled = await LocalAuthentication.isEnrolledAsync();
       if (hasHardware && isEnrolled) {
         const result = await LocalAuthentication.authenticateAsync({
-          promptMessage: 'Unlock Relay',
+          promptMessage: 'Unlock navette',
           // Required on Android when disableDeviceFallback is true: the BiometricPrompt
           // builder throws if the negative button text is empty.
           cancelLabel: 'Use PIN',
@@ -113,7 +116,7 @@ export function LockScreen({ onUnlock }: LockScreenProps) {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.appName}>Relay</Text>
+      <Text style={styles.appName}>navette</Text>
 
       {mode === 'biometric' && (
         <Text style={styles.subtitle}>Verifying identity…</Text>

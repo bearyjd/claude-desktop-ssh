@@ -1,3 +1,6 @@
+// Copyright (C) 2025 Entrevoix, Inc.
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import * as SecureStore from 'expo-secure-store';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -7,15 +10,15 @@ import { AppState, AppStateStatus, StyleSheet } from 'react-native';
 import { ConnectScreen } from './src/screens/ConnectScreen';
 import { LockScreen } from './src/screens/LockScreen';
 import { MainScreen } from './src/screens/MainScreen';
-import { useClaudedWS } from './src/hooks/useClaudedWS';
+import { useNavettedWS } from './src/hooks/useNavettedWS';
 import { ServerConfig } from './src/types';
 import { ErrorBoundary } from './src/components/ErrorBoundary';
 
 
-const LAST_CONFIG_KEY = 'clauded_last_config';
+const LAST_CONFIG_KEY = 'navette_last_config';
 
 export default function App() {
-  const { status, sessionStatus, sessions, activeSessionId, setActiveSessionId, events, pendingApprovals, lastSeq, viewStartSeq, notifyConfig, testNotificationResult, reconnecting, reconnectCount, connect, disconnect, decide, run, kill, sendInput, getNotifyConfig, sendTestNotification, listDir, skills, listSkills, pastSessions, sessionHistory, listPastSessions, getSessionHistory, scheduledSessions, scheduleSession, cancelScheduledSession, listScheduledSessions } = useClaudedWS();
+  const { status, sessionStatus, sessions, activeSessionId, setActiveSessionId, events, pendingApprovals, lastSeq, viewStartSeq, notifyConfig, testNotificationResult, reconnecting, reconnectCount, connect, disconnect, decide, run, kill, sendInput, getNotifyConfig, sendTestNotification, listDir, skills, listSkills, pastSessions, sessionHistory, listPastSessions, getSessionHistory, scheduledSessions, scheduleSession, cancelScheduledSession, listScheduledSessions } = useNavettedWS();
   const [config, setConfig] = useState<ServerConfig | null>(null);
   const [isLocked, setIsLocked] = useState(false);
 

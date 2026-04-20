@@ -1,3 +1,6 @@
+// Copyright (C) 2025 Entrevoix, Inc.
+// SPDX-License-Identifier: AGPL-3.0-only
+
 use std::io::{BufRead, BufReader};
 use std::sync::{
     atomic::{AtomicU64, Ordering},
@@ -85,7 +88,7 @@ pub async fn spawn_and_process(
     if let Some(dir) = work_dir {
         cmd.cwd(dir);
     }
-    cmd.env("CLAUDED_SESSION_ID", session_id);
+    cmd.env("NAVETTED_SESSION_ID", session_id);
 
     let mut child = pair
         .slave
@@ -262,11 +265,11 @@ fn strip_ansi(s: &str) -> String {
 fn write_hook_settings() -> Result<()> {
     let hook_bin = std::env::current_exe()
         .context("failed to determine current exe path")?
-        .with_file_name("clauded-hook");
+        .with_file_name("navetted-hook");
 
     if !hook_bin.exists() {
         anyhow::bail!(
-            "clauded-hook not found at {}; build both binaries together",
+            "navetted-hook not found at {}; build both binaries together",
             hook_bin.display()
         );
     }
