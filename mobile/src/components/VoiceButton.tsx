@@ -1048,12 +1048,14 @@ export function VoiceButton({ onTranscript, disabled }: VoiceButtonProps) {
           <View style={styles.sheet}>
             <Text style={styles.sheetTitle}>Choose voice recognizer</Text>
             <Text style={styles.sheetSub}>Multiple speech services found on this device</Text>
-            {pickerOptions.map(opt => (
-              <Pressable key={opt.pkg} style={styles.sheetOption} onPress={() => handlePickRecognizer(opt)}>
-                <Text style={styles.sheetOptionLabel}>{opt.label}</Text>
-                <Text style={styles.sheetOptionPkg}>{opt.pkg}</Text>
-              </Pressable>
-            ))}
+            <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
+              {pickerOptions.map(opt => (
+                <Pressable key={opt.pkg} style={[styles.sheetOption, { marginBottom: 12 }]} onPress={() => handlePickRecognizer(opt)}>
+                  <Text style={styles.sheetOptionLabel}>{opt.label}</Text>
+                  <Text style={styles.sheetOptionPkg}>{opt.pkg}</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
             <Pressable style={styles.sheetWhisper} onPress={handlePickWhisper}>
               <Text style={styles.sheetWhisperText}>Use Whisper API instead →</Text>
             </Pressable>
