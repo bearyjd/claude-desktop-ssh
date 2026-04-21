@@ -246,6 +246,7 @@ async fn main() -> Result<()> {
 }
 
 /// Lifecycle for a single claude session. Spawned by the WS handler.
+#[allow(clippy::too_many_arguments)]
 pub async fn run_session(
     session_id: String,
     req: RunRequest,
