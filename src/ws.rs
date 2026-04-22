@@ -7,6 +7,7 @@ use std::sync::{
 };
 
 use anyhow::{Context, Result};
+use ring::rand::SecureRandom;
 use subtle::ConstantTimeEq;
 use futures_util::{SinkExt, StreamExt};
 use rand::Rng;
@@ -103,11 +104,50 @@ async fn handle_ws(
                     .await;
                 return Ok(());
             }
-            let provided = msg.get("token").and_then(|v| v.as_str()).unwrap_or("");
-            if !constant_time_token_eq(provided, &token) {
-                let _ = sink.send(rejected("bad token")).await;
-                return Ok(());
+
+            let version = msg.get("version").and_then(|v| v.as_u64()).unwrap_or(1);
+
+            if version >= 2 {
+                // Challenge-response: token never crosses the wire.
+                let nonce = generate_nonce()?;
+                let challenge = serde_json::to_string(&serde_json::json!({
+                    "type": "challenge",
+                    "nonce": nonce,
+                }))
+                .unwrap();
+                sink.send(Message::Text(challenge))
+                    .await
+                    .context("failed to send challenge")?;
+
+                match src.next().await {
+                    Some(Ok(Message::Text(resp_txt))) => {
+                        let resp: Value = serde_json::from_str(&resp_txt)
+                            .context("invalid challenge_response JSON")?;
+                        if resp.get("type").and_then(|v| v.as_str())
+                            != Some("challenge_response")
+                        {
+                            let _ = sink.send(rejected("expected challenge_response")).await;
+                            return Ok(());
+                        }
+                        let provided_hmac =
+                            resp.get("hmac").and_then(|v| v.as_str()).unwrap_or("");
+                        if !verify_hmac(&token, &nonce, provided_hmac) {
+                            let _ = sink.send(rejected("bad hmac")).await;
+                            return Ok(());
+                        }
+                    }
+                    _ => return Ok(()),
+                }
+            } else {
+                // Legacy v1: plaintext token (backward compat).
+                tracing::warn!("v1 plaintext token auth used — upgrade client to v2 challenge-response");
+                let provided = msg.get("token").and_then(|v| v.as_str()).unwrap_or("");
+                if !constant_time_token_eq(provided, &token) {
+                    let _ = sink.send(rejected("bad token")).await;
+                    return Ok(());
+                }
             }
+
             msg.get("client_id")
                 .and_then(|v| v.as_str())
                 .unwrap_or("unknown")
@@ -1025,4 +1065,62 @@ fn unix_ts() -> f64 {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs_f64()
+}
+
+fn generate_nonce() -> Result<String> {
+    let mut buf = [0u8; 32];
+    ring::rand::SystemRandom::new()
+        .fill(&mut buf)
+        .map_err(|_| anyhow::anyhow!("system RNG failed"))?;
+    Ok(hex::encode(buf))
+}
+
+fn verify_hmac(token: &str, nonce: &str, provided_hex: &str) -> bool {
+    let Ok(provided_bytes) = hex::decode(provided_hex) else {
+        return false;
+    };
+    let key = ring::hmac::Key::new(ring::hmac::HMAC_SHA256, token.as_bytes());
+    ring::hmac::verify(&key, nonce.as_bytes(), &provided_bytes).is_ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn challenge_response_success() {
+        let token = "test-secret-token-abc123";
+        let nonce = generate_nonce().unwrap();
+        assert_eq!(nonce.len(), 64);
+
+        let key = ring::hmac::Key::new(ring::hmac::HMAC_SHA256, token.as_bytes());
+        let tag = ring::hmac::sign(&key, nonce.as_bytes());
+        let hmac_hex = hex::encode(tag.as_ref());
+
+        assert!(verify_hmac(token, &nonce, &hmac_hex));
+    }
+
+    #[test]
+    fn challenge_response_wrong_hmac() {
+        let token = "correct-token";
+        let nonce = generate_nonce().unwrap();
+
+        let wrong_key = ring::hmac::Key::new(ring::hmac::HMAC_SHA256, b"wrong-token");
+        let wrong_tag = ring::hmac::sign(&wrong_key, nonce.as_bytes());
+        let wrong_hex = hex::encode(wrong_tag.as_ref());
+
+        assert!(!verify_hmac(token, &nonce, &wrong_hex));
+    }
+
+    #[test]
+    fn challenge_response_invalid_hex() {
+        assert!(!verify_hmac("token", "nonce", "not-valid-hex!!!"));
+    }
+
+    #[test]
+    fn legacy_token_auth() {
+        assert!(constant_time_token_eq("my-secret", "my-secret"));
+        assert!(!constant_time_token_eq("my-secret", "wrong"));
+        assert!(!constant_time_token_eq("short", "longer-token"));
+    }
 }

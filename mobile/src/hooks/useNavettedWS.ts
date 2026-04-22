@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import HmacSHA256 from 'crypto-js/hmac-sha256';
+import Hex from 'crypto-js/enc-hex';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { EventFrame, PendingApproval, ConnectionStatus, ServerConfig, SessionStatus, SessionInfo, AssistantEvent, ToolUseBlock, DirListingEvent, PastSessionInfo, ScheduledSessionInfo, TestNotificationSentEvent, SavedPrompt, SecretEntry, DeviceEntry, FileContentEvent, FileWriteResultEvent } from '../types';
 
@@ -436,7 +438,7 @@ export function useNavettedWS(): UseNavettedWSResult {
 
     ws.onopen = () => {
       setStatus('authenticating');
-      ws.send(JSON.stringify({ type: 'hello', token: config.token, client_id: CLIENT_ID }));
+      ws.send(JSON.stringify({ type: 'hello', version: 2, client_id: CLIENT_ID }));
     };
 
     ws.onmessage = (evt: MessageEvent) => {
@@ -448,6 +450,14 @@ export function useNavettedWS(): UseNavettedWSResult {
       }
 
       const msgType = msg['type'] as string | undefined;
+
+      if (msgType === 'challenge') {
+        const nonce = msg['nonce'];
+        if (typeof nonce !== 'string' || nonce.length === 0) return;
+        const hmac = HmacSHA256(nonce, config.token).toString(Hex);
+        ws.send(JSON.stringify({ type: 'challenge_response', hmac }));
+        return;
+      }
 
       if (msgType === 'welcome') {
         const serverSessions = (msg['sessions'] as SessionInfo[] | undefined) ?? [];
