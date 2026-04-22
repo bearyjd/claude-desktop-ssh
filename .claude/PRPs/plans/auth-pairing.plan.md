@@ -3,7 +3,9 @@
 ## Summary
 Secure the navetted WebSocket connection with QR-based pairing and challenge-response authentication. Phase 1 (vault key decoupling) is complete. This plan covers Phases 2–3.
 
-## Phase 2: QR Pairing
+## Phase 2: QR Pairing (in-progress)
+
+> Plan: `.claude/PRPs/plans/qr-pairing.plan.md`
 
 ### Goal
 Let users pair their mobile device by scanning a QR code displayed in the terminal, instead of manually copying connection details.
@@ -25,7 +27,7 @@ Let users pair their mobile device by scanning a QR code displayed in the termin
 - `cargo test` passes
 - `cargo clippy -- -D warnings` clean
 
-## Phase 3: Challenge-Response Auth
+## Phase 3: Challenge-Response Auth (in-progress)
 
 ### Goal
 Replace plaintext token transmission with HMAC-SHA256 challenge-response. The token never crosses the wire.
