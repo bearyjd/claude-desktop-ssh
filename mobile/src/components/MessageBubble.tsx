@@ -11,7 +11,7 @@ interface MessageBubbleProps {
   role: 'assistant' | 'user';
 }
 
-interface Segment {
+export interface Segment {
   type: 'text' | 'code';
   content: string;
   language?: string;
@@ -19,7 +19,7 @@ interface Segment {
 
 const FENCE_RE = /^```(\w*)\n([\s\S]*?)^```$/gm;
 
-function splitTextAndCode(raw: string): Segment[] {
+export function splitTextAndCode(raw: string): Segment[] {
   const segments: Segment[] = [];
   let cursor = 0;
 
