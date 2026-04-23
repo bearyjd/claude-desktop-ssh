@@ -967,6 +967,7 @@ async fn handle_ws(
                             }
                         }
                     }
+                    #[allow(clippy::collapsible_match)]
                     Some(Ok(Message::Ping(data))) => {
                         if sink.send(Message::Pong(data)).await.is_err() {
                             break;
