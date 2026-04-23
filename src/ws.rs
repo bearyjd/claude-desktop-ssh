@@ -549,8 +549,17 @@ where
                                     } else {
                                         raw_path.to_string()
                                     };
-                                    let canonical = std::fs::canonicalize(&expanded)
-                                        .unwrap_or_else(|_| std::path::PathBuf::from(&expanded));
+                                    let canonical = match std::fs::canonicalize(&expanded) {
+                                        Ok(p) => p,
+                                        Err(_) => {
+                                            return serde_json::json!({
+                                                "type": "dir_listing",
+                                                "path": expanded,
+                                                "entries": [],
+                                                "error": "path not found or not accessible"
+                                            });
+                                        }
+                                    };
 
                                     let result = if !canonical.starts_with(&home) {
                                         serde_json::json!({
@@ -613,8 +622,16 @@ where
                                     } else {
                                         raw_path.to_string()
                                     };
-                                    let canonical = std::fs::canonicalize(&expanded)
-                                        .unwrap_or_else(|_| std::path::PathBuf::from(&expanded));
+                                    let canonical = match std::fs::canonicalize(&expanded) {
+                                        Ok(p) => p,
+                                        Err(_) => {
+                                            return serde_json::json!({
+                                                "type": "file_content",
+                                                "path": expanded,
+                                                "error": "path not found or not accessible"
+                                            });
+                                        }
+                                    };
 
                                     let result = if !canonical.starts_with(&home) {
                                         serde_json::json!({
@@ -1114,9 +1131,15 @@ where
                                     }
                                 } else {
                                     let now = unix_ts();
-                                    let result = {
-                                        let conn = db.lock().unwrap();
-                                        db::set_approval_policy(&conn, &tool_name, &action, now)
+                                    let db2 = Arc::clone(&db);
+                                    let tn = tool_name.clone();
+                                    let act = action.clone();
+                                    let result = match tokio::task::spawn_blocking(move || {
+                                        let conn = db2.lock().unwrap();
+                                        db::set_approval_policy(&conn, &tn, &act, now)
+                                    }).await {
+                                        Ok(inner) => inner,
+                                        Err(e) => Err(anyhow::anyhow!("spawn_blocking panicked: {e}")),
                                     };
                                     let reply = match result {
                                         Ok(()) => {
@@ -1147,9 +1170,14 @@ where
                                     .and_then(|v| v.as_str())
                                     .unwrap_or("")
                                     .to_string();
-                                let result = {
-                                    let conn = db.lock().unwrap();
-                                    db::delete_approval_policy(&conn, &tool_name)
+                                let db2 = Arc::clone(&db);
+                                let tn = tool_name.clone();
+                                let result = match tokio::task::spawn_blocking(move || {
+                                    let conn = db2.lock().unwrap();
+                                    db::delete_approval_policy(&conn, &tn)
+                                }).await {
+                                    Ok(inner) => inner,
+                                    Err(e) => Err(anyhow::anyhow!("spawn_blocking panicked: {e}")),
                                 };
                                 let reply = match result {
                                     Ok(()) => {

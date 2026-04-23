@@ -251,7 +251,10 @@ fn persist_and_emit(db: &Arc<Mutex<Connection>>, tx: &EventTx, v: serde_json::Va
     let ts = unix_ts();
     let seq = {
         let conn = db.lock().unwrap();
-        db::insert_event(&conn, ts, &json).unwrap_or(0)
+        db::insert_event(&conn, ts, &json).unwrap_or_else(|e| {
+            tracing::error!("persist_and_emit: DB insert failed: {e:#}");
+            0
+        })
     };
     let _ = tx.send((seq, ts, json));
 }

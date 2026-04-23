@@ -35,10 +35,9 @@ function getPolicyAction(policies: ApprovalPolicy[], tool: string): PolicyAction
 }
 
 function cycleAction(current: PolicyAction): PolicyAction {
-  if (current === 'allow') return 'prompt';
-  if (current === 'prompt') return 'deny';
-  if (current === 'deny') return 'prompt';
-  return 'allow';
+  if (current === 'prompt') return 'allow';
+  if (current === 'allow') return 'deny';
+  return 'prompt';
 }
 
 function badgeColor(action: PolicyAction) {
