@@ -1217,16 +1217,7 @@ where
                                             "status": "running",
                                             "image": "",
                                         })];
-                                        for line in stdout.lines().skip(1) {
-                                            let cols: Vec<&str> = line.split('|').map(|s| s.trim()).collect();
-                                            if cols.len() >= 3 {
-                                                list.push(serde_json::json!({
-                                                    "name": cols[1],
-                                                    "status": cols[2],
-                                                    "image": cols.get(3).unwrap_or(&""),
-                                                }));
-                                            }
-                                        }
+                                        list.extend(parse_distrobox_output(&stdout));
                                         serde_json::json!({ "type": "containers_list", "containers": list })
                                     }
                                     Err(e) => {
@@ -1284,36 +1275,10 @@ where
                                     let settings_path = std::path::PathBuf::from(&home)
                                         .join(".claude")
                                         .join("settings.json");
-                                    let mut servers = Vec::new();
-                                    if let Ok(content) = std::fs::read_to_string(&settings_path) {
-                                        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&content) {
-                                            if let Some(mcp) = parsed.get("mcpServers").and_then(|v| v.as_object()) {
-                                                for (name, cfg) in mcp {
-                                                    let command = cfg.get("command")
-                                                        .and_then(|v| v.as_str())
-                                                        .unwrap_or("");
-                                                    let args = cfg.get("args")
-                                                        .and_then(|v| v.as_array())
-                                                        .map(|a| a.len())
-                                                        .unwrap_or(0);
-                                                    let env_count = cfg.get("env")
-                                                        .and_then(|v| v.as_object())
-                                                        .map(|e| e.len())
-                                                        .unwrap_or(0);
-                                                    servers.push(serde_json::json!({
-                                                        "name": name,
-                                                        "command": command,
-                                                        "args_count": args,
-                                                        "env_count": env_count,
-                                                        "status": "configured",
-                                                    }));
-                                                }
-                                            }
-                                        }
-                                    }
-                                    servers.sort_by(|a, b| {
-                                        a["name"].as_str().unwrap_or("").cmp(b["name"].as_str().unwrap_or(""))
-                                    });
+                                    let servers = match std::fs::read_to_string(&settings_path) {
+                                        Ok(content) => parse_mcp_settings(&content),
+                                        Err(_) => Vec::new(),
+                                    };
                                     serde_json::json!({ "type": "mcp_servers_list", "servers": servers })
                                 }).await.unwrap_or_else(|_| serde_json::json!({"type": "error", "error": "task panicked"}));
                                 if let Ok(s) = serde_json::to_string(&response) {
@@ -1443,6 +1408,77 @@ fn verify_hmac(token: &str, nonce: &str, provided_hex: &str) -> bool {
     ring::hmac::verify(&key, nonce.as_bytes(), &provided_bytes).is_ok()
 }
 
+/// Parse the stdout of `distrobox list --no-color` into a vec of JSON objects.
+///
+/// Each object has `name`, `status`, and `image` fields.  The header line is
+/// skipped and lines with fewer than 3 pipe-delimited columns are ignored.
+/// The caller is responsible for prepending the "host (no container)" entry.
+pub(crate) fn parse_distrobox_output(stdout: &str) -> Vec<serde_json::Value> {
+    stdout
+        .lines()
+        .skip(1) // header
+        .filter_map(|line| {
+            let cols: Vec<&str> = line.split('|').map(|s| s.trim()).collect();
+            if cols.len() >= 3 {
+                Some(serde_json::json!({
+                    "name": cols[1],
+                    "status": cols[2],
+                    "image": cols.get(3).unwrap_or(&""),
+                }))
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+/// Parse a Claude `settings.json` string and return a sorted vec of MCP server
+/// descriptors.  Each entry has `name`, `command`, `args_count`, `env_count`,
+/// and `status` fields.  Returns an empty vec for invalid JSON or missing
+/// `mcpServers` key.
+pub(crate) fn parse_mcp_settings(content: &str) -> Vec<serde_json::Value> {
+    let parsed: serde_json::Value = match serde_json::from_str(content) {
+        Ok(v) => v,
+        Err(_) => return Vec::new(),
+    };
+    let Some(mcp) = parsed.get("mcpServers").and_then(|v| v.as_object()) else {
+        return Vec::new();
+    };
+    let mut servers: Vec<serde_json::Value> = mcp
+        .iter()
+        .map(|(name, cfg)| {
+            let command = cfg
+                .get("command")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let args = cfg
+                .get("args")
+                .and_then(|v| v.as_array())
+                .map(|a| a.len())
+                .unwrap_or(0);
+            let env_count = cfg
+                .get("env")
+                .and_then(|v| v.as_object())
+                .map(|e| e.len())
+                .unwrap_or(0);
+            serde_json::json!({
+                "name": name,
+                "command": command,
+                "args_count": args,
+                "env_count": env_count,
+                "status": "configured",
+            })
+        })
+        .collect();
+    servers.sort_by(|a, b| {
+        a["name"]
+            .as_str()
+            .unwrap_or("")
+            .cmp(b["name"].as_str().unwrap_or(""))
+    });
+    servers
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1536,5 +1572,120 @@ mod tests {
         assert!(load_tls_acceptor(&cfg).unwrap().is_some());
 
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // --- parse_distrobox_output tests ---
+
+    #[test]
+    fn parse_distrobox_output_typical() {
+        let stdout = "\
+ID | NAME | STATUS | IMAGE
+abc123 | my-fedora | running | registry.fedoraproject.org/fedora:40
+def456 | my-ubuntu | exited | docker.io/library/ubuntu:24.04
+";
+        let result = parse_distrobox_output(stdout);
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0]["name"], "my-fedora");
+        assert_eq!(result[0]["status"], "running");
+        assert_eq!(
+            result[0]["image"],
+            "registry.fedoraproject.org/fedora:40"
+        );
+        assert_eq!(result[1]["name"], "my-ubuntu");
+        assert_eq!(result[1]["status"], "exited");
+        assert_eq!(result[1]["image"], "docker.io/library/ubuntu:24.04");
+    }
+
+    #[test]
+    fn parse_distrobox_output_empty() {
+        let result = parse_distrobox_output("");
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn parse_distrobox_output_header_only() {
+        let stdout = "ID | NAME | STATUS | IMAGE\n";
+        let result = parse_distrobox_output(stdout);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn parse_distrobox_output_malformed_lines() {
+        let stdout = "\
+ID | NAME | STATUS | IMAGE
+only-one-column
+two | columns
+abc | valid-name | running | some-image
+";
+        let result = parse_distrobox_output(stdout);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0]["name"], "valid-name");
+    }
+
+    // --- parse_mcp_settings tests ---
+
+    #[test]
+    fn parse_mcp_settings_valid() {
+        let content = r#"{
+            "mcpServers": {
+                "server-b": {
+                    "command": "npx",
+                    "args": ["-y", "@modelcontextprotocol/server-b"],
+                    "env": { "API_KEY": "xxx" }
+                },
+                "server-a": {
+                    "command": "uvx",
+                    "args": ["mcp-server-a"]
+                }
+            }
+        }"#;
+        let result = parse_mcp_settings(content);
+        assert_eq!(result.len(), 2);
+        // sorted by name
+        assert_eq!(result[0]["name"], "server-a");
+        assert_eq!(result[0]["command"], "uvx");
+        assert_eq!(result[0]["args_count"], 1);
+        assert_eq!(result[0]["env_count"], 0);
+        assert_eq!(result[0]["status"], "configured");
+
+        assert_eq!(result[1]["name"], "server-b");
+        assert_eq!(result[1]["command"], "npx");
+        assert_eq!(result[1]["args_count"], 2);
+        assert_eq!(result[1]["env_count"], 1);
+    }
+
+    #[test]
+    fn parse_mcp_settings_empty_json() {
+        let result = parse_mcp_settings("{}");
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn parse_mcp_settings_no_mcp_servers_key() {
+        let content = r#"{ "permissions": {} }"#;
+        let result = parse_mcp_settings(content);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn parse_mcp_settings_invalid_json() {
+        let result = parse_mcp_settings("not valid json {{{");
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn parse_mcp_settings_sorted_by_name() {
+        let content = r#"{
+            "mcpServers": {
+                "zebra": { "command": "z" },
+                "alpha": { "command": "a" },
+                "middle": { "command": "m" }
+            }
+        }"#;
+        let result = parse_mcp_settings(content);
+        assert_eq!(result.len(), 3);
+        assert_eq!(result[0]["name"], "alpha");
+        assert_eq!(result[1]["name"], "middle");
+        assert_eq!(result[2]["name"], "zebra");
     }
 }

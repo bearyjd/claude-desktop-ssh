@@ -147,7 +147,7 @@ const tcStyles = StyleSheet.create({
 
 const MAX_SHARE_EVENTS = 500;
 
-function eventsToPlainText(events: EventFrame[]): string {
+export function eventsToPlainText(events: EventFrame[]): string {
   const capped = events.slice(0, MAX_SHARE_EVENTS);
   const lines: string[] = [];
   for (const frame of capped) {
