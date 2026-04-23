@@ -97,6 +97,8 @@ pub fn html_escape(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#x27;")
 }
 
 #[cfg(test)]
@@ -109,5 +111,6 @@ mod tests {
         assert_eq!(html_escape("A&B"), "A&amp;B");
         assert_eq!(html_escape("normal text"), "normal text");
         assert_eq!(html_escape(""), "");
+        assert_eq!(html_escape(r#"a"b'c"#), "a&quot;b&#x27;c");
     }
 }

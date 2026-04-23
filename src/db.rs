@@ -80,11 +80,9 @@ pub fn open() -> Result<Connection> {
         [],
     ) {
         Ok(_) => {}
+        Err(rusqlite::Error::SqliteFailure(err, _)) if err.extended_code == 1 => {}
         Err(e) => {
-            let msg = e.to_string();
-            if !msg.contains("duplicate column") {
-                tracing::warn!("migration failed: {msg}");
-            }
+            tracing::warn!("migration failed: {e}");
         }
     }
     tracing::info!("DB opened at {}", db_path.display());

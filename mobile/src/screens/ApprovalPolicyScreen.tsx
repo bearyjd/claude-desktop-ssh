@@ -37,6 +37,7 @@ function getPolicyAction(policies: ApprovalPolicy[], tool: string): PolicyAction
 function cycleAction(current: PolicyAction): PolicyAction {
   if (current === 'allow') return 'prompt';
   if (current === 'prompt') return 'deny';
+  if (current === 'deny') return 'prompt';
   return 'allow';
 }
 
@@ -78,11 +79,11 @@ export function ApprovalPolicyScreen({ visible, onClose, policies, onRefresh, on
   const customPolicies = policies.filter(p => !COMMON_TOOLS.includes(p.tool_name));
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={styles.container}>
         <View style={styles.header}>
           <Text style={styles.title}>Approval Policies</Text>
-          <Pressable onPress={onClose}>
+          <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel="Done">
             <Text style={styles.doneBtn}>Done</Text>
           </Pressable>
         </View>
@@ -96,7 +97,7 @@ export function ApprovalPolicyScreen({ visible, onClose, policies, onRefresh, on
             const action = getPolicyAction(policies, item);
             const colors = badgeColor(action);
             return (
-              <Pressable style={styles.row} onPress={() => handleTap(item)}>
+              <Pressable style={styles.row} onPress={() => handleTap(item)} accessibilityRole="button" accessibilityLabel={`${item}: ${badgeLabel(action)}. Tap to change.`}>
                 <Text style={styles.toolName}>{item}</Text>
                 <View style={[styles.badge, { backgroundColor: colors.bg }]}>
                   <Text style={[styles.badgeText, { color: colors.text }]}>

@@ -159,17 +159,23 @@ export function useNavettedWS(): UseNavettedWSResult {
 
   const listDir = useCallback((path: string, cb: (ev: DirListingEvent) => void) => {
     dirListingCallbackRef.current = cb;
-    wsRef.current?.send(JSON.stringify({ type: 'list_dir', path }));
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'list_dir', path }));
+    }
   }, []);
 
   const readFile = useCallback((path: string, cb: (ev: FileContentEvent) => void) => {
     fileContentCallbackRef.current = cb;
-    wsRef.current?.send(JSON.stringify({ type: 'read_file', path }));
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'read_file', path }));
+    }
   }, []);
 
   const writeFile = useCallback((path: string, content: string, cb: (ev: FileWriteResultEvent) => void) => {
     fileWriteCallbackRef.current = cb;
-    wsRef.current?.send(JSON.stringify({ type: 'write_file', path, content }));
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'write_file', path, content }));
+    }
   }, []);
 
   const kill = useCallback((sessionId?: string) => {
@@ -625,7 +631,9 @@ export function useNavettedWS(): UseNavettedWSResult {
       }
 
       if (msgType === 'approval_policy_set' || msgType === 'approval_policy_deleted') {
-        getApprovalPolicies();
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+          wsRef.current.send(JSON.stringify({ type: 'get_approval_policies' }));
+        }
         return;
       }
 

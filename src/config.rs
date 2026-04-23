@@ -56,7 +56,7 @@ pub fn load_or_create() -> Result<Config> {
             .get("ws_port")
             .and_then(|v| v.as_integer())
             .unwrap_or(7878);
-        let ws_port = if (0..=65535).contains(&port_i64) {
+        let ws_port = if (1..=65535).contains(&port_i64) {
             port_i64 as u16
         } else {
             tracing::warn!(value = port_i64, "ws_port out of range, using default 7878");

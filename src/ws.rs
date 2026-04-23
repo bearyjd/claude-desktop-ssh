@@ -263,7 +263,13 @@ where
                 since = s;
             } else if msg.get("type").and_then(|v| v.as_str()) == Some("attach") {
                 if let Some(Ok(Message::Text(since_txt))) = src.next().await {
-                    let since_msg: Value = serde_json::from_str(&since_txt).unwrap_or_default();
+                    let since_msg: Value = match serde_json::from_str(&since_txt) {
+                        Ok(v) => v,
+                        Err(_) => {
+                            tracing::warn!("invalid JSON in since message");
+                            serde_json::json!({})
+                        }
+                    };
                     since = since_msg.get("since").and_then(|v| v.as_i64()).unwrap_or(0);
                 }
             } else {
@@ -684,8 +690,18 @@ where
                                     };
                                     let path = std::path::PathBuf::from(&expanded);
                                     let parent = path.parent().unwrap_or(&path).to_path_buf();
-                                    let canonical_parent = std::fs::canonicalize(&parent)
-                                        .unwrap_or_else(|_| parent.clone());
+                                    let canonical_parent = match std::fs::canonicalize(&parent) {
+                                        Ok(p) => p,
+                                        Err(_) => {
+                                            tracing::warn!(path = %expanded, "write_file: parent directory does not exist");
+                                            return serde_json::json!({
+                                                "type": "file_written",
+                                                "path": expanded,
+                                                "ok": false,
+                                                "error": "parent directory does not exist or is not accessible"
+                                            });
+                                        }
+                                    };
                                     let canonical = canonical_parent.join(
                                         path.file_name().unwrap_or_default()
                                     );
