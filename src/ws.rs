@@ -1208,15 +1208,16 @@ where
                                     .args(["list", "--no-color"])
                                     .output()
                                     .await;
+                                let host_entry = serde_json::json!({
+                                    "name": "",
+                                    "display": "host (no container)",
+                                    "status": "running",
+                                    "image": "",
+                                });
                                 let containers = match response {
                                     Ok(output) => {
                                         let stdout = String::from_utf8_lossy(&output.stdout);
-                                        let mut list = vec![serde_json::json!({
-                                            "name": "",
-                                            "display": "host (no container)",
-                                            "status": "running",
-                                            "image": "",
-                                        })];
+                                        let mut list = vec![host_entry];
                                         list.extend(parse_distrobox_output(&stdout));
                                         serde_json::json!({ "type": "containers_list", "containers": list })
                                     }
@@ -1224,12 +1225,7 @@ where
                                         tracing::warn!(%client_id, "list_containers failed: {e}");
                                         serde_json::json!({
                                             "type": "containers_list",
-                                            "containers": [{
-                                                "name": "",
-                                                "display": "host (no container)",
-                                                "status": "running",
-                                                "image": "",
-                                            }],
+                                            "containers": [host_entry],
                                             "error": format!("distrobox not available: {e}"),
                                         })
                                     }

@@ -3,10 +3,7 @@
 
 import { exportTranscriptMarkdown, copyMessageText } from '../transcript';
 import { EventFrame, AssistantEvent } from '../../types';
-
-function frame(seq: number, event: EventFrame['event']): EventFrame {
-  return { seq, ts: 1000 + seq, event };
-}
+import { frame } from '../../__test-utils__/frame';
 
 describe('exportTranscriptMarkdown', () => {
   it('includes session header with session ID', () => {
