@@ -12,6 +12,7 @@ export type ClaudeEvent =
   | AssistantEvent
   | ToolResultEvent
   | ResultEvent
+  | SessionEndedEvent
   | UnknownEvent;
 
 export interface SystemEvent {
@@ -51,6 +52,12 @@ export interface ResultEvent {
   type: 'result';
   subtype: string;
   result?: string;
+}
+
+export interface SessionEndedEvent {
+  type: 'session_ended';
+  ok: boolean;
+  duration_secs?: number;
 }
 
 export interface UnknownEvent {

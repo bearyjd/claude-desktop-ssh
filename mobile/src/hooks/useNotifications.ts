@@ -3,14 +3,15 @@
 
 import { useEffect, useRef } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
-import { EventFrame } from '../types';
+import { EventFrame, SessionEndedEvent } from '../types';
 
 interface UseNotificationsOptions {
   events: EventFrame[];
   enabled: boolean;
+  onSessionEnded?: (event: SessionEndedEvent) => void;
 }
 
-export function useNotifications({ events, enabled }: UseNotificationsOptions): void {
+export function useNotifications({ events, enabled, onSessionEnded }: UseNotificationsOptions): void {
   const lastProcessedSeq = useRef(0);
   const appState = useRef<AppStateStatus>(AppState.currentState);
 
@@ -31,12 +32,11 @@ export function useNotifications({ events, enabled }: UseNotificationsOptions): 
       if (frame.event.type !== 'session_ended') continue;
       if (appState.current === 'active') continue;
 
-      const ev = frame.event as { type: string; ok: boolean; duration_secs?: number };
+      const ev = frame.event as SessionEndedEvent;
       const duration = ev.duration_secs ?? 0;
       if (duration < 60) continue;
 
-      // TODO: integrate expo-notifications for local push when app is backgrounded
-      // For now, the daemon's ntfy/Telegram integration handles remote notifications
+      onSessionEnded?.(ev);
     }
-  }, [events, enabled]);
+  }, [events, enabled, onSessionEnded]);
 }
