@@ -3,10 +3,7 @@
 
 import { eventsToPlainText, summarizeInput } from '../EventLog';
 import { EventFrame, AssistantEvent } from '../../types';
-
-function frame(seq: number, event: EventFrame['event']): EventFrame {
-  return { seq, ts: 1000 + seq, event };
-}
+import { frame } from '../../__test-utils__/frame';
 
 describe('eventsToPlainText', () => {
   it('formats session_started events', () => {
