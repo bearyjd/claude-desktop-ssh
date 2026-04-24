@@ -2,3 +2,5 @@
 .omc/
 /vendor/
 /flatpak-repo/
+*.flatpak
+/repo-fresh/
