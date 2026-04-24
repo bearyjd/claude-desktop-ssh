@@ -1443,10 +1443,7 @@ pub(crate) fn parse_mcp_settings(content: &str) -> Vec<serde_json::Value> {
     let mut servers: Vec<serde_json::Value> = mcp
         .iter()
         .map(|(name, cfg)| {
-            let command = cfg
-                .get("command")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
+            let command = cfg.get("command").and_then(|v| v.as_str()).unwrap_or("");
             let args = cfg
                 .get("args")
                 .and_then(|v| v.as_array())
@@ -1583,10 +1580,7 @@ def456 | my-ubuntu | exited | docker.io/library/ubuntu:24.04
         assert_eq!(result.len(), 2);
         assert_eq!(result[0]["name"], "my-fedora");
         assert_eq!(result[0]["status"], "running");
-        assert_eq!(
-            result[0]["image"],
-            "registry.fedoraproject.org/fedora:40"
-        );
+        assert_eq!(result[0]["image"], "registry.fedoraproject.org/fedora:40");
         assert_eq!(result[1]["name"], "my-ubuntu");
         assert_eq!(result[1]["status"], "exited");
         assert_eq!(result[1]["image"], "docker.io/library/ubuntu:24.04");
