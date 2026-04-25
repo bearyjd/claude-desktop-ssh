@@ -7,7 +7,9 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { PaperProvider } from 'react-native-paper';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import React, { useEffect, useRef, useState } from 'react';
-import { AppState, AppStateStatus } from 'react-native';
+import { AppState, AppStateStatus, LogBox } from 'react-native';
+
+LogBox.ignoreLogs(['Promise passed to']);
 
 import { ConnectScreen } from './src/screens/ConnectScreen';
 import { LockScreen } from './src/screens/LockScreen';

@@ -28,7 +28,7 @@ const SODA_DICTATION_MODEL = 'web_search';
 // Pixel devices have settings:secure:voice_recognition_service = null, so an
 // unpinned createSpeechRecognizer() throws code 5. com.google.android.tts is
 // the only package that actually exposes a RecognitionService on Pixel today.
-const DEFAULT_RECOGNIZER_PKG = 'com.google.android.tts';
+const DEFAULT_RECOGNIZER_PKGS = ['com.google.android.tts', 'com.google.android.as'];
 
 export const STT_ENGINE_KEY = 'stt_engine';
 export const STT_RECOGNIZER_PKG_KEY = 'stt_recognizer_pkg';
@@ -65,9 +65,10 @@ const KNOWN_RECOGNIZERS: RecognizerOption[] = [
 // but another recognizer might. Used only when a non-empty failover chain
 // is queued (i.e. detection surfaced multiple candidates).
 // 5 = ERROR_CLIENT (no-service variant), 7 = ERROR_NO_MATCH_OR_UNAVAILABLE,
+// 9 = ERROR_INSUFFICIENT_PERMISSIONS (service-not-allowed on Android 13+),
 // 11 = ERROR_LANGUAGE_UNAVAILABLE, 12 = ERROR_LANGUAGE_NOT_SUPPORTED,
 // 13 = ERROR_SERVER_UNAVAILABLE.
-const FAILOVER_CODES = new Set([5, 7, 11, 12, 13]);
+const FAILOVER_CODES = new Set([5, 9, 11, 12, 13]);
 
 const PREFERRED_LANG = 'en-US';
 
@@ -98,9 +99,9 @@ function sttErrorMessage(code: number, raw: string): string {
     4: 'Server error — try again later',
     5: 'No speech service found on device',
     6: 'No speech detected — speak closer to mic',
-    7: 'Speech service not installed',
+    7: 'No speech detected — try again',
     8: 'Speech service busy — wait and retry',
-    9: 'Microphone permission denied — check Settings',
+    9: 'Speech service not allowed — trying another',
     11: 'Language not supported by this service',
     13: 'Speech service unavailable',
   };
@@ -265,7 +266,7 @@ export function VoiceButton({ onTranscript, disabled }: VoiceButtonProps) {
   // Ordered list of pkg candidates to try if the current recognizer fails
   // with a failover-eligible code. Shift-from-front; empty means no more
   // fallbacks and the error is final.
-  const failoverChainRef = useRef<(string | null)[]>([]);
+  const failoverChainRef = useRef<string[]>([]);
   // True once detection has seeded the chain this session, so a later failure
   // doesn't loop back into detection indefinitely.
   const detectionRanRef = useRef(false);
@@ -286,6 +287,9 @@ export function VoiceButton({ onTranscript, disabled }: VoiceButtonProps) {
   // Set when an audio/speech event is observed so the watchdog knows audio
   // flowed and skips the hang handler.
   const audioSeenRef = useRef(false);
+  const errorHandlingRef = useRef(false);
+  const sessionFailedPkgsRef = useRef<Set<string>>(new Set());
+  const lastAttemptedPkgRef = useRef<string | null>(null);
 
   // ── Tap-to-toggle recording state ───────────────────────────────────────
   // True while a recording session is active (between the start tap and the
@@ -389,6 +393,9 @@ export function VoiceButton({ onTranscript, disabled }: VoiceButtonProps) {
   const retryDetection = useCallback(async () => {
     await AsyncStorage.removeItem(STT_RECOGNIZER_PKG_KEY);
     await AsyncStorage.removeItem(STT_RECOGNIZER_LABEL_KEY);
+    sessionFailedPkgsRef.current.clear();
+    errorHandlingRef.current = false;
+    detectionRanRef.current = false;
     dismissErr();
     await triggerDetectionRef.current();
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -535,17 +542,40 @@ export function VoiceButton({ onTranscript, disabled }: VoiceButtonProps) {
   // Do NOT reintroduce requiresOnDeviceRecognition or EXTRA_PREFER_OFFLINE here:
   // both fail or are silently ignored on Android 16. See memory/android16-stt-soda-ambient-fix.md.
   const startRecognizerRef = useRef(async (pkg: string | null) => {
-    const effectivePkg = pkg && pkg.length > 0 ? pkg : DEFAULT_RECOGNIZER_PKG;
-    const lang = await pickBestLocale(effectivePkg);
+    // pkg meanings: non-empty string = explicit package, '' = bare start
+    // (let Android pick the default, no explicit bind), null = try defaults list.
+    let effectivePkg: string | null;
+    if (pkg !== null && pkg.length === 0) {
+      effectivePkg = '';
+    } else if (pkg && pkg.length > 0) {
+      effectivePkg = sessionFailedPkgsRef.current.has(pkg) ? null : pkg;
+    } else {
+      effectivePkg = DEFAULT_RECOGNIZER_PKGS.find(p => !sessionFailedPkgsRef.current.has(p)) ?? null;
+    }
+    if (effectivePkg === null) {
+      if (!detectionRanRef.current) {
+        await triggerDetectionRef.current();
+      } else {
+        pressActiveRef.current = false;
+        activeEngineRef.current = null;
+        showErrRef.current(
+          'No working speech service found on this device.\nTry Whisper API or install a speech service from the Play Store.',
+          0, true, 'no-service',
+        );
+      }
+      return;
+    }
+    lastAttemptedPkgRef.current = effectivePkg || null;
+    const lang = await pickBestLocale(effectivePkg || null);
     if (!pressActiveRef.current && activeEngineRef.current === 'ondevice') return;
-    logEventRef.current('start.request', { pkg: effectivePkg, lang });
+    logEventRef.current('start.request', { pkg: effectivePkg || '(system-default)', lang });
     try {
       ExpoSpeechRecognitionModule.start({
         lang,
         interimResults: true,
         maxAlternatives: 1,
         continuous: true,
-        androidRecognitionServicePackage: effectivePkg,
+        ...(effectivePkg ? { androidRecognitionServicePackage: effectivePkg } : {}),
         androidIntentOptions: { EXTRA_LANGUAGE_MODEL: SODA_DICTATION_MODEL },
       });
       started.current = true;
@@ -556,6 +586,7 @@ export function VoiceButton({ onTranscript, disabled }: VoiceButtonProps) {
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       logEventRef.current('start.throw', { msg });
+      sessionFailedPkgsRef.current.add(effectivePkg);
       showErrRef.current(`STT start failed: ${msg}`, 0, true);
     }
   });
@@ -575,7 +606,7 @@ export function VoiceButton({ onTranscript, disabled }: VoiceButtonProps) {
       // that as a successful detection causes the app to auto-start with no
       // explicit pkg, which is exactly what just failed — an infinite loop.
       // Skip straight to the no-service sheet (with diagnostics) instead.
-      const realHits = available.filter((o) => o.pkg !== '');
+      const realHits = available.filter((o) => o.pkg !== '' && !sessionFailedPkgsRef.current.has(o.pkg));
       if (realHits.length === 0) {
         failoverChainRef.current = [];
         showErrRef.current(
@@ -592,7 +623,7 @@ export function VoiceButton({ onTranscript, disabled }: VoiceButtonProps) {
         await AsyncStorage.setItem(STT_RECOGNIZER_PKG_KEY, hit.pkg);
         await AsyncStorage.setItem(STT_RECOGNIZER_LABEL_KEY, hit.label);
         showErrRef.current(`Using ${hit.label}`, 1500);
-        failoverChainRef.current = [];
+        failoverChainRef.current = [''];
         await startRecognizerRef.current(hit.pkg);
         return;
       }
@@ -600,7 +631,7 @@ export function VoiceButton({ onTranscript, disabled }: VoiceButtonProps) {
       // Multi-service: seed the failover chain with every detected package
       // (minus the one we'll show the picker for) so that, once the user
       // picks, subsequent failures can transparently try the rest.
-      failoverChainRef.current = available.map((o) => o.pkg || null);
+      failoverChainRef.current = available.map((o) => o.pkg);
       setPickerOptions(available);
       setPickerVisible(true);
     } catch (e: unknown) {
@@ -644,6 +675,7 @@ export function VoiceButton({ onTranscript, disabled }: VoiceButtonProps) {
       ExpoSpeechRecognitionModule.addListener('start', () => {
         logEventRef.current('start');
         noServiceRetryRef.current = 0;
+        errorHandlingRef.current = false;
       }),
       ExpoSpeechRecognitionModule.addListener('audiostart', () => {
         logEventRef.current('audiostart');
@@ -670,6 +702,7 @@ export function VoiceButton({ onTranscript, disabled }: VoiceButtonProps) {
       async (event: ExpoSpeechRecognitionErrorEvent) => {
         clearWatchdogRef.current();
         stopListeningRef.current();
+        errorHandlingRef.current = true;
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const code = (event as any).code ?? -1;
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -684,7 +717,7 @@ export function VoiceButton({ onTranscript, disabled }: VoiceButtonProps) {
         // must not clear the saved pkg or trigger detection, or the second tap
         // finds no service. Show a brief transient error and exit.
         if (!pressActiveRef.current) {
-          if (code !== 6) { // code 6 = no speech detected, expected/silent
+          if (code !== 6 && code !== 7) { // 6/7 = silence, expected after stop
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const rawMsg = `${event.error}${(event as any).message ? ': ' + (event as any).message : ''} (code ${code})`;
             showErrRef.current(sttErrorMessage(code, rawMsg), 4000);
@@ -692,22 +725,40 @@ export function VoiceButton({ onTranscript, disabled }: VoiceButtonProps) {
           return;
         }
 
+        if (FAILOVER_CODES.has(code) && lastAttemptedPkgRef.current) {
+          sessionFailedPkgsRef.current.add(lastAttemptedPkgRef.current);
+        }
+
+        // Code 7 (no-match / silence timeout) is benign — the recognizer
+        // heard nothing during its window. Restart silently during an active
+        // session instead of entering failover or the no-service handler.
+        if (code === 7) {
+          errorHandlingRef.current = false;
+          setTimeout(async () => {
+            if (!pressActiveRef.current) return;
+            const savedPkg = await AsyncStorage.getItem(STT_RECOGNIZER_PKG_KEY);
+            await startRecognizerRef.current(savedPkg);
+          }, 300);
+          return;
+        }
+
         // 1. Failover: try the next candidate in the chain before giving up
         //    or re-running detection. Applies to language/server-availability
-        //    errors AND no-service errors (5/7) — a picker-driven selection
+        //    errors AND no-service errors (5) — a picker-driven selection
         //    that fails should silently try the next queued candidate rather
         //    than bouncing back through detection to the same picker.
         if (FAILOVER_CODES.has(code) && failoverChainRef.current.length > 0) {
-          const nextPkg = failoverChainRef.current.shift() ?? null;
+          const nextPkg = failoverChainRef.current.shift()!;
           const label = nextPkg ? labelForPackage(nextPkg) : 'System Default';
           showErrRef.current(`Retrying with ${label}…`, 2000);
           await startRecognizerRef.current(nextPkg);
           return;
         }
 
-        // 2. No-service errors — existing detect-or-clear flow
-        //    code 5 = client error (no service), code 7 = no recognition service
-        if (code === 5 || code === 7) {
+        // 2. No-service / not-allowed errors — detect-or-clear flow
+        //    code 5 = client error (no service),
+        //    code 9 = service-not-allowed (Android 13+ bind restriction)
+        if (code === 5 || code === 9) {
           const [savedPkg, savedLabel] = await Promise.all([
             AsyncStorage.getItem(STT_RECOGNIZER_PKG_KEY),
             AsyncStorage.getItem(STT_RECOGNIZER_LABEL_KEY),
@@ -777,6 +828,7 @@ export function VoiceButton({ onTranscript, disabled }: VoiceButtonProps) {
       // true), Soda ended on its own (silence/timeout). Accumulate the text
       // from this segment and auto-restart after a brief delay.
       if (pressActiveRef.current && activeEngineRef.current === 'ondevice') {
+        if (errorHandlingRef.current) return;
         if (text) {
           sessionTextRef.current = sessionTextRef.current
             ? `${sessionTextRef.current} ${text}`
@@ -832,7 +884,7 @@ export function VoiceButton({ onTranscript, disabled }: VoiceButtonProps) {
     // Remove the picked package from the failover chain so we don't retry it
     // immediately if it fails — next-best candidates remain queued.
     failoverChainRef.current = failoverChainRef.current.filter(
-      (p) => p !== (option.pkg || null),
+      (p) => p !== option.pkg,
     );
     showErrRef.current(`Using ${option.label}`, 1500);
     // Arm the same session state handlePressIn would set so the 3-min safety cap
@@ -860,8 +912,11 @@ export function VoiceButton({ onTranscript, disabled }: VoiceButtonProps) {
 
   const requestRecordAudio = useCallback(async (): Promise<boolean> => {
     try {
-      const result = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
-      return result.granted;
+      const current = await ExpoSpeechRecognitionModule.getPermissionsAsync();
+      if (current.granted) return true;
+      if (!current.canAskAgain) return false;
+      const next = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+      return next.granted;
     } catch {
       return false;
     }
@@ -998,6 +1053,7 @@ export function VoiceButton({ onTranscript, disabled }: VoiceButtonProps) {
 
     // First tap — start recording
     pressActiveRef.current = true;
+    errorHandlingRef.current = false;
     sessionTextRef.current = '';
     errPersistRef.current = false;
     setErrMsg('');
@@ -1042,7 +1098,7 @@ export function VoiceButton({ onTranscript, disabled }: VoiceButtonProps) {
           <View style={[styles.sheet, { backgroundColor: theme.colors.surface }]}>
             <Text style={[styles.sheetTitle, { color: theme.colors.onSurface }]}>Choose voice recognizer</Text>
             <Text style={[styles.sheetSub, { color: theme.colors.onSurfaceVariant }]}>Multiple speech services found on this device</Text>
-            <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
+            <ScrollView showsVerticalScrollIndicator={false}>
               {pickerOptions.map(opt => (
                 <Pressable key={opt.pkg} style={[styles.sheetOption, { marginBottom: 12, backgroundColor: theme.colors.surfaceVariant, borderColor: theme.colors.outlineVariant }]} onPress={() => handlePickRecognizer(opt)}>
                   <Text style={[styles.sheetOptionLabel, { color: theme.colors.onSurface }]}>{opt.label}</Text>
@@ -1252,7 +1308,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 16, borderTopRightRadius: 16,
     padding: 24, paddingBottom: 40, gap: 12, maxHeight: '85%',
   },
-  errSheetScroll: { flex: 1 },
+  errSheetScroll: {},
   sheetTitle: { fontSize: 17, fontWeight: '700' },
   sheetSub: { fontSize: 13, marginBottom: 4 },
   sheetOption: {

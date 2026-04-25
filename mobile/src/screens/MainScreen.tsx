@@ -6,6 +6,7 @@ import * as Haptics from 'expo-haptics';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   FlatList,
+  Keyboard,
   Pressable,
   ScrollView,
   Share,
@@ -195,10 +196,17 @@ export function MainScreen({
   const [logExpanded, setLogExpanded] = useState(false);
   const [reconnectedFlash, setReconnectedFlash] = useState(false);
   const [viewMode, setViewMode] = useState<'list' | 'board'>('list');
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectedFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevReconnectingRef = useRef(false);
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener('keyboardDidShow', () => setKeyboardVisible(true));
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => setKeyboardVisible(false));
+    return () => { showSub.remove(); hideSub.remove(); };
+  }, []);
 
   useEffect(() => {
     AsyncStorage.getItem('navette_view_mode').then((v: string | null) => {
@@ -443,17 +451,19 @@ export function MainScreen({
         </ScrollView>
       )}
 
-      {/* Chat view — primary content */}
-      <ChatView
-        events={events}
-        pendingApprovals={pendingApprovals}
-        onDecide={onDecide}
-        onBatchDecide={onBatchDecide}
-        viewStartSeq={viewStartSeq}
-        activeSessionId={activeSessionId}
-        sessionRunning={isRunning}
-        onSendInput={isRunning && activeSessionId ? onSendInput : undefined}
-      />
+      {/* Chat view — hidden when keyboard is up and idle to make room for input */}
+      {(isRunning || !keyboardVisible) && (
+        <ChatView
+          events={events}
+          pendingApprovals={pendingApprovals}
+          onDecide={onDecide}
+          onBatchDecide={onBatchDecide}
+          viewStartSeq={viewStartSeq}
+          activeSessionId={activeSessionId}
+          sessionRunning={isRunning}
+          onSendInput={isRunning && activeSessionId ? onSendInput : undefined}
+        />
+      )}
 
       {/* New session input (only when idle) */}
       {!isRunning && (

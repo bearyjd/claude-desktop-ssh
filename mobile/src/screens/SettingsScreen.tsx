@@ -3,10 +3,13 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Clipboard from 'expo-clipboard';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
+  Animated,
+  Dimensions,
   Linking,
   Modal,
+  PanResponder,
   ScrollView,
   StyleSheet,
   Text,
@@ -106,6 +109,43 @@ export function SettingsScreen({ visible, onClose, notifyConfig, onRequestNotify
   const [devicesVisible, setDevicesVisible] = useState(false);
   const [policyVisible, setPolicyVisible] = useState(false);
   const [mcpVisible, setMcpVisible] = useState(false);
+
+  const screenWidth = Dimensions.get('window').width;
+  const dismissThreshold = screenWidth * 0.3;
+  const translateX = useRef(new Animated.Value(0)).current;
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, { dx, dy }) =>
+        dx > 10 && Math.abs(dx) > Math.abs(dy) * 2,
+      onPanResponderMove: (_, { dx }) => {
+        if (dx > 0) translateX.setValue(dx);
+      },
+      onPanResponderRelease: (_, { dx, vx }) => {
+        if (dx > dismissThreshold || vx > 0.5) {
+          Animated.timing(translateX, {
+            toValue: screenWidth,
+            duration: 200,
+            useNativeDriver: true,
+          }).start(() => {
+            translateX.setValue(0);
+            onCloseRef.current();
+          });
+        } else {
+          Animated.spring(translateX, {
+            toValue: 0,
+            useNativeDriver: true,
+          }).start();
+        }
+      },
+    })
+  ).current;
+
+  useEffect(() => {
+    if (visible) translateX.setValue(0);
+  }, [visible, translateX]);
 
   useEffect(() => {
     if (visible) {
@@ -232,7 +272,10 @@ export function SettingsScreen({ visible, onClose, notifyConfig, onRequestNotify
         onCancel={onCancelScheduledSession}
         onRefresh={onListScheduledSessions}
       />
-      <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+      <Animated.View
+        {...panResponder.panHandlers}
+        style={[styles.container, { backgroundColor: theme.colors.background, transform: [{ translateX }] }]}
+      >
         <View style={[styles.header, { borderBottomColor: theme.colors.outlineVariant }]}>
           <Text style={[styles.title, { color: theme.colors.onSurface }]}>Settings</Text>
           <Button mode="text" onPress={onClose} compact>Done</Button>
@@ -453,7 +496,7 @@ export function SettingsScreen({ visible, onClose, notifyConfig, onRequestNotify
           )}
         </View>
         </ScrollView>
-      </View>
+      </Animated.View>
     </Modal>
   );
 }
