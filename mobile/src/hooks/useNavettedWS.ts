@@ -191,17 +191,21 @@ export function useNavettedWS(): UseNavettedWSResult {
   }, []);
 
   const readFile = useCallback((path: string, cb: (ev: FileContentEvent) => void) => {
-    fileContentCallbackRef.current = cb;
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: 'read_file', path }));
+    if (wsRef.current?.readyState !== WebSocket.OPEN) {
+      cb({ type: 'file_content', path, error: 'Not connected' } as FileContentEvent);
+      return;
     }
+    fileContentCallbackRef.current = cb;
+    wsRef.current.send(JSON.stringify({ type: 'read_file', path }));
   }, []);
 
   const writeFile = useCallback((path: string, content: string, cb: (ev: FileWriteResultEvent) => void) => {
-    fileWriteCallbackRef.current = cb;
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: 'write_file', path, content }));
+    if (wsRef.current?.readyState !== WebSocket.OPEN) {
+      cb({ type: 'file_written', path, ok: false, error: 'Not connected' } as FileWriteResultEvent);
+      return;
     }
+    fileWriteCallbackRef.current = cb;
+    wsRef.current.send(JSON.stringify({ type: 'write_file', path, content }));
   }, []);
 
   const kill = useCallback((sessionId?: string) => {
