@@ -318,6 +318,7 @@ export function MainScreen({
         listDir={listDir}
         readFile={readFile}
         writeFile={writeFile}
+        onSetWorkDir={setWorkDir}
         initialPath={workDir || '~'}
       />
       <SettingsScreen

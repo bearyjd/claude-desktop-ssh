@@ -182,10 +182,12 @@ export function useNavettedWS(): UseNavettedWSResult {
   }, []);
 
   const listDir = useCallback((path: string, cb: (ev: DirListingEvent) => void) => {
-    dirListingCallbackRef.current = cb;
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: 'list_dir', path }));
+    if (wsRef.current?.readyState !== WebSocket.OPEN) {
+      cb({ type: 'dir_listing', path, entries: [], error: 'Not connected' } as DirListingEvent);
+      return;
     }
+    dirListingCallbackRef.current = cb;
+    wsRef.current.send(JSON.stringify({ type: 'list_dir', path }));
   }, []);
 
   const readFile = useCallback((path: string, cb: (ev: FileContentEvent) => void) => {
