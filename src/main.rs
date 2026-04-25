@@ -65,8 +65,40 @@ pub struct RunRequest {
     pub inject_secrets: bool,
 }
 
+fn print_help() {
+    let version = env!("CARGO_PKG_VERSION");
+    println!("navetted {version} — remote interface daemon for Claude Code");
+    println!();
+    println!("USAGE:");
+    println!("    navetted [OPTIONS]");
+    println!();
+    println!("OPTIONS:");
+    println!("    --pair    Show a QR code to pair the mobile app (daemon must be running)");
+    println!("    --help    Print this help message");
+    println!();
+    println!("CONFIG:");
+    println!("    ~/.config/navetted/config.toml (auto-created on first run)");
+    println!();
+    println!("Start the daemon first, then run `navetted --pair` in another terminal");
+    println!("to display the pairing QR code for the navette mobile app.");
+}
+
 fn handle_pair() -> Result<()> {
     let cfg = config::load_or_create()?;
+
+    let addr = format!("127.0.0.1:{}", cfg.ws_port);
+    if std::net::TcpStream::connect_timeout(
+        &addr.parse().unwrap(),
+        std::time::Duration::from_secs(2),
+    )
+    .is_err()
+    {
+        anyhow::bail!(
+            "navetted is not running on port {}. Start the daemon first: navetted",
+            cfg.ws_port
+        );
+    }
+
     let tls = cfg.tls_enabled();
     let local_ip = local_ip_address::local_ip()
         .map(|ip| ip.to_string())
@@ -97,6 +129,10 @@ fn handle_pair() -> Result<()> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        print_help();
+        return Ok(());
+    }
     if std::env::args().any(|a| a == "--pair") {
         return handle_pair();
     }

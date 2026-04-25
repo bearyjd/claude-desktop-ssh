@@ -199,7 +199,7 @@ export function ConnectScreen({ status, onConnect }: ConnectScreenProps) {
     setQrVisible(true);
   };
 
-  const handleBarcodeScan = ({ data }: { data: string }) => {
+  const handleBarcodeScan = async ({ data }: { data: string }) => {
     if (scannedRef.current) return;
     scannedRef.current = true;
 
@@ -217,14 +217,35 @@ export function ConnectScreen({ status, onConnect }: ConnectScreenProps) {
         setQrVisible(false);
         return;
       }
-      setHost(payload.host);
-      setPort(payload.port);
-      setToken(payload.token);
-      setTls(payload.tls ?? false);
-      setName(`QR: ${payload.host}`);
-      setSelectedId(null);
+      const scannedHost = payload.host;
+      const scannedPort = payload.port;
+      const scannedToken = payload.token;
+      const scannedTls = payload.tls ?? false;
+      const scannedName = `QR: ${scannedHost}`;
+
+      setHost(scannedHost);
+      setPort(scannedPort);
+      setToken(scannedToken);
+      setTls(scannedTls);
+      setName(scannedName);
       setQrVisible(false);
       setQrError('');
+
+      const id = genId();
+      const cfg: SavedConfig = {
+        id,
+        name: scannedName,
+        host: scannedHost,
+        port: scannedPort,
+        token: scannedToken,
+        tls: scannedTls,
+      };
+      await SecureStore.setItemAsync(tokenKey(id), scannedToken);
+      const updated = [...savedConfigs, cfg];
+      setSavedConfigs(updated);
+      setSelectedId(id);
+      const stripped = updated.map(c => ({ ...c, token: '' }));
+      await AsyncStorage.setItem(CONFIGS_KEY, JSON.stringify(stripped));
     } catch {
       setQrError('Could not decode QR code.');
       setQrVisible(false);
