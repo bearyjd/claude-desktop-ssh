@@ -15,7 +15,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { Appbar, Button, Chip, SegmentedButtons, useTheme } from 'react-native-paper';
+import { Appbar, Button, Chip, IconButton, SegmentedButtons, useTheme } from 'react-native-paper';
 import { getStatusColors, getSemanticColors } from '../theme';
 import { useThemeMode } from '../ThemeContext';
 import { ChatView } from '../components/ChatView';
@@ -503,21 +503,20 @@ export function MainScreen({
             ))}
           </ScrollView>
 
-          <TextInput
-            style={[styles.input, styles.promptInput, { backgroundColor: theme.colors.surfaceVariant, borderColor: theme.colors.outline, color: theme.colors.onSurface }, isVoiceInterim && { color: theme.colors.onSurfaceVariant }]}
-            value={prompt}
-            onChangeText={(t: string) => { setPrompt(t); promptRef.current = t; setIsVoiceInterim(false); }}
-            placeholder="What should Claude do?"
-            placeholderTextColor={theme.colors.onSurfaceVariant}
-            multiline
-            autoCorrect={false}
-          />
-
-          <View style={styles.actionRow}>
-            <VoiceButton onTranscript={handleVoiceTranscript} />
-            <Button mode="contained" onPress={handleRun} disabled={!prompt.trim()} style={{ flex: 1, minHeight: 44 }}>
-              Run
-            </Button>
+          <View style={styles.inputRow}>
+            <TextInput
+              style={[styles.input, styles.promptInput, { backgroundColor: theme.colors.surfaceVariant, borderColor: theme.colors.outline, color: theme.colors.onSurface }, isVoiceInterim && { color: theme.colors.onSurfaceVariant }]}
+              value={prompt}
+              onChangeText={(t: string) => { setPrompt(t); promptRef.current = t; setIsVoiceInterim(false); }}
+              placeholder="What should Claude do?"
+              placeholderTextColor={theme.colors.onSurfaceVariant}
+              multiline
+              autoCorrect={false}
+            />
+            <View style={styles.inputActions}>
+              <VoiceButton onTranscript={handleVoiceTranscript} />
+              <IconButton icon="send" mode="contained" onPress={handleRun} disabled={!prompt.trim()} size={20} />
+            </View>
           </View>
 
           <Pressable style={styles.advancedHeader} onPress={() => setAdvancedOpen((o: boolean) => !o)}>
@@ -658,8 +657,9 @@ const styles = StyleSheet.create({
 
   runPanel: { borderRadius: 16, marginHorizontal: 8, marginBottom: 8, paddingHorizontal: 16, paddingVertical: 12, gap: 10 },
   input: { borderRadius: 8, borderWidth: 1, padding: 10, fontSize: 14 },
-  promptInput: { minHeight: 52, maxHeight: 120, textAlignVertical: 'top' },
-  actionRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  promptInput: { flex: 1, minHeight: 52, maxHeight: 120, textAlignVertical: 'top' },
+  inputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
+  inputActions: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   agentRow: { flexGrow: 0 },
   agentRowContent: { flexDirection: 'row', gap: 6, paddingVertical: 4 },
   dirBtn: { borderRadius: 8, borderWidth: 1, padding: 10 },
