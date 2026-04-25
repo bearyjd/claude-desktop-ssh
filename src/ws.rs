@@ -28,7 +28,9 @@ use crate::{BufferedDecisions, Decision, PendingApprovals, Sessions};
 pub type EventTx = broadcast::Sender<(i64, f64, String)>;
 
 pub(crate) fn is_valid_agent(s: &str) -> bool {
-    !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    !s.is_empty()
+        && s.chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
 }
 
 pub fn load_tls_acceptor(cfg: &Config) -> Result<Option<TlsAcceptor>> {

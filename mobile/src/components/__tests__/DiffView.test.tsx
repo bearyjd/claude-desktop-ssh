@@ -1,110 +1,89 @@
 import React from 'react';
-import { fireEvent, render } from '@testing-library/react-native';
+import { render } from '@testing-library/react-native';
 import { DiffView } from '../DiffView';
+import type { DiffLine } from '../../utils/diff';
 
-const SIMPLE_DIFF = `--- a/file.txt\n+++ b/file.txt\n@@ -1,3 +1,4 @@\n context\n+added line\n-removed line\n`;
-
-describe('DiffView — rendering guards', () => {
-  it('returns null for empty content', () => {
-    const { toJSON } = render(<DiffView content="" />);
-    expect(toJSON()).toBeNull();
-  });
-
-  it('returns null when content has no diff markers', () => {
-    const { toJSON } = render(<DiffView content="just some plain text\nno markers here" />);
-    expect(toJSON()).toBeNull();
-  });
-
-  it('renders when content contains @@ hunk header', () => {
-    const { getByText } = render(<DiffView content={SIMPLE_DIFF} />);
-    expect(getByText(/Diff/)).toBeTruthy();
-  });
-});
+const SIMPLE_LINES: DiffLine[] = [
+  { type: 'context', text: 'context' },
+  { type: 'add', text: 'added line' },
+  { type: 'remove', text: 'removed line' },
+];
 
 describe('DiffView — stats', () => {
   it('shows correct added count', () => {
-    const { getByText } = render(<DiffView content={SIMPLE_DIFF} />);
+    const { getByText } = render(<DiffView lines={SIMPLE_LINES} />);
     expect(getByText('+1')).toBeTruthy();
   });
 
   it('shows correct removed count', () => {
-    const { getByText } = render(<DiffView content={SIMPLE_DIFF} />);
+    const { getByText } = render(<DiffView lines={SIMPLE_LINES} />);
     expect(getByText('-1')).toBeTruthy();
   });
 
   it('does not render added stat when there are no added lines', () => {
-    const diff = `--- a/file.txt\n+++ b/file.txt\n@@ -1 +1 @@\n-only removed\n`;
-    const { queryByText } = render(<DiffView content={diff} />);
-    // removed stat present
+    const lines: DiffLine[] = [{ type: 'remove', text: 'only removed' }];
+    const { queryByText } = render(<DiffView lines={lines} />);
     expect(queryByText('-1')).toBeTruthy();
-    // added stat absent
     expect(queryByText(/^\+\d/)).toBeNull();
   });
 
   it('does not render removed stat when there are no removed lines', () => {
-    const diff = `--- a/file.txt\n+++ b/file.txt\n@@ -1 +1 @@\n+only added\n`;
-    const { queryByText } = render(<DiffView content={diff} />);
+    const lines: DiffLine[] = [{ type: 'add', text: 'only added' }];
+    const { queryByText } = render(<DiffView lines={lines} />);
     expect(queryByText('+1')).toBeTruthy();
     expect(queryByText(/^-\d/)).toBeNull();
   });
 
   it('counts multiple added and removed lines correctly', () => {
-    const diff = [
-      '--- a/file.txt',
-      '+++ b/file.txt',
-      '@@ -1,5 +1,6 @@',
-      ' context',
-      '+line a',
-      '+line b',
-      '+line c',
-      '-gone1',
-      '-gone2',
-    ].join('\n');
-    const { getByText } = render(<DiffView content={diff} />);
+    const lines: DiffLine[] = [
+      { type: 'context', text: 'context' },
+      { type: 'add', text: 'line a' },
+      { type: 'add', text: 'line b' },
+      { type: 'add', text: 'line c' },
+      { type: 'remove', text: 'gone1' },
+      { type: 'remove', text: 'gone2' },
+    ];
+    const { getByText } = render(<DiffView lines={lines} />);
     expect(getByText('+3')).toBeTruthy();
     expect(getByText('-2')).toBeTruthy();
   });
+});
 
-  it('does not count +++ or --- file headers as added/removed', () => {
-    // A diff with only file headers and a hunk header — no actual changed lines
-    const diff = `--- a/file.txt\n+++ b/file.txt\n@@ -0,0 +1 @@\n`;
-    const { queryByText } = render(<DiffView content={diff} />);
-    // +++ and --- are excluded; hunk triggers render but no stat lines
-    expect(queryByText(/^\+\d/)).toBeNull();
-    expect(queryByText(/^-\d/)).toBeNull();
+describe('DiffView — line rendering', () => {
+  it('renders the Diff header', () => {
+    const { getByText } = render(<DiffView lines={SIMPLE_LINES} />);
+    expect(getByText('Diff')).toBeTruthy();
+  });
+
+  it('renders line text content', () => {
+    const { getByText } = render(<DiffView lines={SIMPLE_LINES} />);
+    expect(getByText('added line')).toBeTruthy();
+    expect(getByText('removed line')).toBeTruthy();
+  });
+
+  it('renders gutter markers for each line type', () => {
+    const { getAllByText } = render(<DiffView lines={SIMPLE_LINES} />);
+    expect(getAllByText('+').length).toBeGreaterThanOrEqual(1);
+    expect(getAllByText('-').length).toBeGreaterThanOrEqual(1);
   });
 });
 
-describe('DiffView — expand / collapse toggle', () => {
-  it('starts collapsed (no line content visible)', () => {
-    const { queryByText } = render(<DiffView content={SIMPLE_DIFF} />);
-    expect(queryByText('added line')).toBeNull();
-    expect(queryByText('removed line')).toBeNull();
+describe('DiffView — truncation', () => {
+  it('shows truncation notice when lines exceed 80', () => {
+    const lines: DiffLine[] = Array.from({ length: 90 }, (_, i) => ({
+      type: 'add' as const,
+      text: `line ${i}`,
+    }));
+    const { getByText } = render(<DiffView lines={lines} />);
+    expect(getByText(/10 more lines/)).toBeTruthy();
   });
 
-  it('shows collapse indicator ▼ when expanded', () => {
-    const { getByText } = render(<DiffView content={SIMPLE_DIFF} />);
-    fireEvent.press(getByText(/Diff/));
-    expect(getByText(/▼/)).toBeTruthy();
-  });
-
-  it('shows expand indicator ▶ when collapsed', () => {
-    const { getByText } = render(<DiffView content={SIMPLE_DIFF} />);
-    expect(getByText(/▶/)).toBeTruthy();
-  });
-
-  it('reveals diff lines after pressing header', () => {
-    const { getByText } = render(<DiffView content={SIMPLE_DIFF} />);
-    fireEvent.press(getByText(/Diff/));
-    // Lines render with their +/- prefix characters intact
-    expect(getByText('+added line')).toBeTruthy();
-    expect(getByText('-removed line')).toBeTruthy();
-  });
-
-  it('hides diff lines again after pressing header twice', () => {
-    const { getByText, queryByText } = render(<DiffView content={SIMPLE_DIFF} />);
-    fireEvent.press(getByText(/Diff/));
-    fireEvent.press(getByText(/Diff/));
-    expect(queryByText('+added line')).toBeNull();
+  it('does not show truncation notice when lines are within limit', () => {
+    const lines: DiffLine[] = Array.from({ length: 50 }, (_, i) => ({
+      type: 'add' as const,
+      text: `line ${i}`,
+    }));
+    const { queryByText } = render(<DiffView lines={lines} />);
+    expect(queryByText(/more lines/)).toBeNull();
   });
 });
