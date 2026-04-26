@@ -35,7 +35,7 @@ export default function App() {
 
 function AppInner() {
   const { theme, isDark } = useThemeMode();
-  const { status, sessionStatus, sessions, activeSessionId, setActiveSessionId, events, pendingApprovals, lastSeq, viewStartSeq, notifyConfig, testNotificationResult, reconnecting, reconnectCount, connectionLost, connect, retry, disconnect, decide, batchDecide, run, kill, sendInput, getNotifyConfig, sendTestNotification, listDir, readFile, writeFile, skills, listSkills, pastSessions, sessionHistory, listPastSessions, getSessionHistory, scheduledSessions, scheduleSession, cancelScheduledSession, listScheduledSessions, savedPrompts, listPrompts, savePrompt, updatePrompt, deletePrompt, secrets, listSecrets, setSecret, deleteSecret, devices, listDevices, revokeDevice, renameDevice, approvalPolicies, getApprovalPolicies, setApprovalPolicy, deleteApprovalPolicy, containers, listContainers, mcpServers, listMcpServers, searchResults, searchSessions, hasUnread } = useNavettedWS();
+  const { status, sessionStatus, sessions, activeSessionId, setActiveSessionId, events, pendingApprovals, lastSeq, viewStartSeq, notifyConfig, testNotificationResult, reconnecting, reconnectCount, connectionLost, connect, retry, disconnect, decide, batchDecide, run, kill, sendInput, getNotifyConfig, sendTestNotification, listDir, readFile, writeFile, createDir, skills, listSkills, pastSessions, sessionHistory, listPastSessions, getSessionHistory, scheduledSessions, scheduleSession, cancelScheduledSession, listScheduledSessions, savedPrompts, listPrompts, savePrompt, updatePrompt, deletePrompt, secrets, listSecrets, setSecret, deleteSecret, devices, listDevices, revokeDevice, renameDevice, approvalPolicies, getApprovalPolicies, setApprovalPolicy, deleteApprovalPolicy, containers, listContainers, mcpServers, listMcpServers, searchResults, searchSessions, hasUnread } = useNavettedWS();
   const [config, setConfig] = useState<ServerConfig | null>(null);
   const [isLocked, setIsLocked] = useState(false);
 
@@ -152,6 +152,7 @@ function AppInner() {
               listDir={listDir}
               readFile={readFile}
               writeFile={writeFile}
+              createDir={createDir}
               skills={skills}
               onListSkills={listSkills}
               pastSessions={pastSessions}

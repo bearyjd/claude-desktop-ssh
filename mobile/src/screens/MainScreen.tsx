@@ -26,7 +26,7 @@ import { VoiceButton } from '../components/VoiceButton';
 import { ContainerPickerScreen } from './ContainerPickerScreen';
 import { FileBrowserScreen } from './FileBrowserScreen';
 import { SettingsScreen } from './SettingsScreen';
-import { ApprovalPolicy, ConnectionStatus, ContainerInfo, DeviceEntry, DirListingEvent, EventFrame, FileContentEvent, FileWriteResultEvent, McpServerInfo, PastSessionInfo, PendingApproval, PolicyAction, SavedPrompt, ScheduledSessionInfo, SearchResult, SecretEntry, SessionInfo, SessionStatus } from '../types';
+import { ApprovalPolicy, ConnectionStatus, ContainerInfo, DeviceEntry, DirCreatedEvent, DirListingEvent, EventFrame, FileContentEvent, FileWriteResultEvent, McpServerInfo, PastSessionInfo, PendingApproval, PolicyAction, SavedPrompt, ScheduledSessionInfo, SearchResult, SecretEntry, SessionInfo, SessionStatus } from '../types';
 import type { NotifyConfig, SkillInfo } from '../hooks/useNavettedWS';
 import { KanbanBoard } from '../components/KanbanBoard';
 
@@ -58,6 +58,7 @@ interface MainScreenProps {
   listDir: (path: string, cb: (ev: DirListingEvent) => void) => void;
   readFile: (path: string, cb: (ev: FileContentEvent) => void) => void;
   writeFile: (path: string, content: string, cb: (ev: FileWriteResultEvent) => void) => void;
+  createDir: (path: string, cb: (ev: DirCreatedEvent) => void) => void;
   skills: SkillInfo[];
   onListSkills: () => void;
   pastSessions: PastSessionInfo[];
@@ -129,6 +130,7 @@ export function MainScreen({
   listDir,
   readFile,
   writeFile,
+  createDir,
   skills,
   onListSkills,
   pastSessions,
@@ -601,6 +603,7 @@ export function MainScreen({
             onClose={() => setDirPickerOpen(false)}
             onSelect={setWorkDir}
             listDir={listDir}
+            createDir={createDir}
           />
           <ContainerPickerScreen
             visible={containerPickerOpen}

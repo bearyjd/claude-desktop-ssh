@@ -200,6 +200,13 @@ export interface FileWriteResultEvent {
   error?: string;
 }
 
+export interface DirCreatedEvent {
+  type: 'dir_created';
+  path: string;
+  ok: boolean;
+  error?: string;
+}
+
 export interface ContainerInfo {
   name: string;
   status: string;
