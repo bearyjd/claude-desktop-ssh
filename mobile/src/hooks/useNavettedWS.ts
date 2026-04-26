@@ -6,7 +6,7 @@ import HmacSHA256 from 'crypto-js/hmac-sha256';
 import Hex from 'crypto-js/enc-hex';
 import * as Crypto from 'expo-crypto';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { EventFrame, PendingApproval, ConnectionStatus, ServerConfig, SessionStatus, SessionInfo, AssistantEvent, ToolUseBlock, DirListingEvent, PastSessionInfo, ScheduledSessionInfo, TestNotificationSentEvent, SavedPrompt, SecretEntry, DeviceEntry, FileContentEvent, FileWriteResultEvent, ApprovalPolicy, PolicyAction, ContainerInfo, McpServerInfo, SearchResult } from '../types';
+import { EventFrame, PendingApproval, ConnectionStatus, ServerConfig, SessionStatus, SessionInfo, AssistantEvent, ToolUseBlock, DirListingEvent, PastSessionInfo, ScheduledSessionInfo, TestNotificationSentEvent, SavedPrompt, SecretEntry, DeviceEntry, FileContentEvent, FileWriteResultEvent, DirCreatedEvent, ApprovalPolicy, PolicyAction, ContainerInfo, McpServerInfo, SearchResult } from '../types';
 
 const LAST_SEQ_KEY = 'navette_last_seq';
 
@@ -57,6 +57,7 @@ interface UseNavettedWSResult {
   listDir: (path: string, cb: (ev: DirListingEvent) => void) => void;
   readFile: (path: string, cb: (ev: FileContentEvent) => void) => void;
   writeFile: (path: string, content: string, cb: (ev: FileWriteResultEvent) => void) => void;
+  createDir: (path: string, cb: (ev: DirCreatedEvent) => void) => void;
   listSkills: () => void;
   listPastSessions: () => void;
   getSessionHistory: (sessionId: string) => void;
@@ -121,6 +122,7 @@ export function useNavettedWS(): UseNavettedWSResult {
   const dirListingCallbackRef = useRef<((ev: DirListingEvent) => void) | null>(null);
   const fileContentCallbackRef = useRef<((ev: FileContentEvent) => void) | null>(null);
   const fileWriteCallbackRef = useRef<((ev: FileWriteResultEvent) => void) | null>(null);
+  const dirCreatedCallbackRef = useRef<((ev: DirCreatedEvent) => void) | null>(null);
   const shouldReconnectRef = useRef(false);
   const reconnectDelayRef = useRef(1000);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -209,6 +211,15 @@ export function useNavettedWS(): UseNavettedWSResult {
     }
     fileWriteCallbackRef.current = cb;
     wsRef.current.send(JSON.stringify({ type: 'write_file', path, content }));
+  }, []);
+
+  const createDir = useCallback((path: string, cb: (ev: DirCreatedEvent) => void) => {
+    if (wsRef.current?.readyState !== WebSocket.OPEN) {
+      cb({ type: 'dir_created', path, ok: false, error: 'Not connected' });
+      return;
+    }
+    dirCreatedCallbackRef.current = cb;
+    wsRef.current.send(JSON.stringify({ type: 'create_dir', path }));
   }, []);
 
   const kill = useCallback((sessionId?: string) => {
@@ -633,6 +644,13 @@ export function useNavettedWS(): UseNavettedWSResult {
         return;
       }
 
+      if (msgType === 'dir_created') {
+        const cb = dirCreatedCallbackRef.current;
+        dirCreatedCallbackRef.current = null;
+        cb?.(msg as unknown as DirCreatedEvent);
+        return;
+      }
+
       if (msgType === 'skills_list') {
         setSkills((msg['skills'] as SkillInfo[] | undefined) ?? []);
         return;
@@ -854,6 +872,7 @@ export function useNavettedWS(): UseNavettedWSResult {
     listDir,
     readFile,
     writeFile,
+    createDir,
     listSkills,
     listPastSessions,
     getSessionHistory,

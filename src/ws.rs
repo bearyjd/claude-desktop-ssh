@@ -645,6 +645,82 @@ where
                                         break;
                                     }
                                 }
+                            } else if msg_type == "create_dir" {
+                                let raw_path = v.get("path").and_then(|p| p.as_str()).unwrap_or("").to_string();
+                                let client_id2 = client_id.clone();
+                                let response = tokio::task::spawn_blocking(move || {
+                                    let home = std::env::var("HOME").unwrap_or_else(|_| "/".to_string());
+                                    let home_canonical = std::fs::canonicalize(&home)
+                                        .unwrap_or_else(|_| std::path::PathBuf::from(&home));
+                                    let expanded = if raw_path == "~" || raw_path.starts_with("~/") {
+                                        raw_path.replacen('~', home_canonical.to_string_lossy().as_ref(), 1)
+                                    } else {
+                                        raw_path.to_string()
+                                    };
+
+                                    let target = std::path::PathBuf::from(&expanded);
+                                    if let Some(name) = target.file_name().and_then(|n| n.to_str()) {
+                                        if name.is_empty() || name == "." || name == ".." || name.contains('/') {
+                                            return serde_json::json!({
+                                                "type": "dir_created",
+                                                "path": expanded,
+                                                "ok": false,
+                                                "error": "invalid folder name"
+                                            });
+                                        }
+                                    } else {
+                                        return serde_json::json!({
+                                            "type": "dir_created",
+                                            "path": expanded,
+                                            "ok": false,
+                                            "error": "invalid folder name"
+                                        });
+                                    }
+
+                                    let parent = match target.parent().and_then(|p| std::fs::canonicalize(p).ok()) {
+                                        Some(p) => p,
+                                        None => {
+                                            return serde_json::json!({
+                                                "type": "dir_created",
+                                                "path": expanded,
+                                                "ok": false,
+                                                "error": "parent directory not found"
+                                            });
+                                        }
+                                    };
+
+                                    if !parent.starts_with(&home_canonical) {
+                                        return serde_json::json!({
+                                            "type": "dir_created",
+                                            "path": expanded,
+                                            "ok": false,
+                                            "error": "path is outside home directory"
+                                        });
+                                    }
+
+                                    // file_name validated non-None above; all None/invalid paths return early
+                                    let full_path = parent.join(target.file_name().expect("validated above"));
+                                    let result = match std::fs::create_dir(&full_path) {
+                                        Ok(()) => serde_json::json!({
+                                            "type": "dir_created",
+                                            "path": full_path.to_string_lossy(),
+                                            "ok": true
+                                        }),
+                                        Err(e) => serde_json::json!({
+                                            "type": "dir_created",
+                                            "path": full_path.to_string_lossy(),
+                                            "ok": false,
+                                            "error": e.to_string()
+                                        }),
+                                    };
+                                    tracing::debug!(client_id = %client_id2, path = %full_path.display(), "create_dir");
+                                    result
+                                }).await.unwrap_or_else(|_| serde_json::json!({"type": "error", "error": "task panicked"}));
+                                if let Ok(s) = serde_json::to_string(&response) {
+                                    if sink.send(Message::Text(s)).await.is_err() {
+                                        break;
+                                    }
+                                }
                             } else if msg_type == "read_file" {
                                 let raw_path = v.get("path").and_then(|p| p.as_str()).unwrap_or("").to_string();
                                 let client_id2 = client_id.clone();

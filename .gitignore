@@ -4,3 +4,7 @@
 /flatpak-repo/
 *.flatpak
 /repo-fresh/
+.claude/PRPs/
+.gstack/
+.reports/
+docs/CODEMAPS/
